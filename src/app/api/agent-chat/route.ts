@@ -262,8 +262,9 @@ export async function POST(req: Request) {
     // 情况 1：LLM 想调工具
     if (msg.tool_calls && msg.tool_calls.length > 0) {
       for (const tc of msg.tool_calls) {
-        const toolName = tc.function.name
-        const rawArgs = tc.function.arguments
+        const fn = (tc as any).function ?? tc
+        const toolName = fn.name
+        const rawArgs = fn.arguments
         const args = JSON.parse(rawArgs)
 
         steps.push(`  🔧 调用工具：${toolName}(${rawArgs})`)
