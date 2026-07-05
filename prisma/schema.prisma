@@ -1,0 +1,363 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id             String         @id @default(cuid())
+  name           String?
+  email          String         @unique
+  password       String?
+  emailVerified  DateTime?
+  image          String?
+  avatarUrl      String?
+  bio            String?
+  phone          String?
+  university     String?
+  major          String?
+  graduationYear Int?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  accounts       Account[]
+  sessions       Session[]
+  internships    Internship[]
+  settings       UserSettings?
+  growthMemories GrowthMemory[]
+  milestones     Milestone[]
+  skills         Skill[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model UserSettings {
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  theme                  String   @default("system")
+  language               String   @default("zh-CN")
+  interviewDepth         String   @default("STANDARD")
+  preferredInterviewTime String?
+  industryFocus          String?
+  resumeTargetRole       String?
+  notificationEnabled    Boolean  @default(true)
+  aiModel                String   @default("gpt-4o")
+  openaiApiKey           String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Internship {
+  id          String    @id @default(cuid())
+  userId      String
+  companyName String
+  position    String
+  department  String?
+  startDate   DateTime
+  endDate     DateTime?
+  isActive    Boolean   @default(true)
+  description String?
+  logo        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyRecords     DailyRecord[]
+  tasks            Task[]
+  reports          Report[]
+  starCases        STARCase[]
+  resumeMaterials  ResumeMaterial[]
+
+  @@index([userId])
+}
+
+model DailyRecord {
+  id            String   @id @default(cuid())
+  internshipId  String
+  date          DateTime
+  title         String?
+  conversation  String   @default("[]")
+  summary       String?
+  mood          String?
+  hoursWorked   Float?
+  wordCount     Int      @default(0)
+  coachFeedback String?   // AI Coach daily evaluation
+  growthPoints  String?   // JSON: [{skill, points}]
+  reflection    String?   // User's own reflection
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  internship     Internship    @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  workItems      WorkItem[]
+  knowledgeItems Knowledge[]
+  achievements   Achievement[]
+  milestones     Milestone[]
+
+  @@unique([internshipId, date])
+  @@index([internshipId])
+  @@index([date])
+}
+
+model WorkItem {
+  id          String   @id @default(cuid())
+  recordId    String
+  type        String   @default("task")
+  title       String
+  description String?
+  status      String   @default("completed")
+  priority    String   @default("medium")
+  tags        String   @default("[]")
+  effort      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  record    DailyRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  starCases STARCase[]
+
+  @@index([recordId])
+  @@index([type])
+  @@index([status])
+}
+
+model Knowledge {
+  id              String   @id @default(cuid())
+  recordId        String
+  category        String   @default("technical")
+  title           String
+  content         String
+  source          String?
+  tags            String   @default("[]")
+  masteryLevel    String   @default("beginner")
+  isBookmarked    Boolean  @default(false)
+  relatedIds      String?   // JSON: [id1, id2] related knowledge IDs
+  prerequisiteIds String?   // JSON: prerequisite knowledge IDs
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  record DailyRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@index([recordId])
+  @@index([category])
+  @@index([masteryLevel])
+}
+
+model STARCase {
+  id            String   @id @default(cuid())
+  internshipId  String
+  workItemId    String?
+  title         String
+  situation     String
+  task          String
+  action        String
+  result        String
+  skills        String   @default("[]")
+  tags          String   @default("[]")
+  impact        String?
+  isAiGenerated Boolean  @default(false)
+  isVerified    Boolean  @default(false)
+  starRating    Int      @default(3)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  internship      Internship       @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  workItem        WorkItem?        @relation(fields: [workItemId], references: [id], onDelete: SetNull)
+  resumeMaterials ResumeMaterial[]
+
+  @@index([internshipId])
+  @@index([workItemId])
+}
+
+model ResumeMaterial {
+  id            String   @id @default(cuid())
+  internshipId  String
+  starCaseId    String?
+  category      String   @default("bullet")
+  title         String?
+  content       String
+  targetRole    String?
+  targetJD      String?
+  isAiGenerated Boolean  @default(false)
+  isPinned      Boolean  @default(false)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  internship Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+  starCase   STARCase?  @relation(fields: [starCaseId], references: [id], onDelete: SetNull)
+
+  @@index([internshipId])
+  @@index([category])
+}
+
+model Report {
+  id           String   @id @default(cuid())
+  internshipId String
+  type         String   @default("INTERNSHIP_SUMMARY")
+  title        String
+  format       String   @default("MARKDOWN")
+  status       String   @default("PENDING")
+  fileUrl      String?
+  config       String?
+  content      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  internship Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+
+  @@index([internshipId])
+}
+
+model Achievement {
+  id          String   @id @default(cuid())
+  recordId    String
+  title       String
+  description String?
+  category    String   @default("milestone")
+  icon        String?
+  value       Float?
+  unit        String?
+  createdAt   DateTime @default(now())
+
+  record DailyRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@index([recordId])
+  @@index([category])
+}
+
+model GrowthMemory {
+  id             String   @id @default(cuid())
+  userId         String
+  date           DateTime
+
+  skillsSnapshot String   // JSON: [{name, level, lastPracticed}]
+  openChallenges String   // JSON: [{description, since}]
+  keyLearnings   String   // JSON: [{title, content}]
+
+  isMilestone    Boolean  @default(false)
+  milestoneTitle String?
+  milestoneIcon  String?
+
+  summary        String   // Growth summary for AI context
+  careerCapital  String   // JSON: [{category, count, unit}]
+
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([date])
+}
+
+model Milestone {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  description String?
+  icon        String   @default("⭐")
+  date        DateTime
+  category    String   // "first_time" | "achievement" | "promotion" | "insight"
+  recordId    String?  // Linked DailyRecord
+
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  record DailyRecord? @relation(fields: [recordId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([date])
+}
+
+model Tag {
+  id         String   @id @default(cuid())
+  name       String   @unique
+  color      String?
+  category   String   @default("general")
+  usageCount Int      @default(0)
+  createdAt  DateTime @default(now())
+}
+
+model RateLimit {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  count     Int      @default(1)
+  resetAt   DateTime
+
+  @@index([resetAt])
+}
+
+model Skill {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  level        Int      @default(1) // 1-10
+  category     String   @default("professional") // professional | tool | soft | domain
+  trend        String   @default("stable") // improving | stable | declining
+  firstSeen    DateTime @default(now())
+  lastSeen     DateTime @default(now())
+  evidenceCount Int     @default(0) // How many records support this skill
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@index([name])
+  @@index([level])
+}
+
+model Task {
+  id           String   @id @default(cuid())
+  internshipId String
+  title        String
+  description  String?
+  status       String   @default("in_progress")
+  priority     String   @default("medium")
+  startDate    DateTime?
+  dueDate      DateTime?
+  completedAt  DateTime?
+  tags         String   @default("[]")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  internship Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+
+  @@index([internshipId])
+  @@index([status])
+}
