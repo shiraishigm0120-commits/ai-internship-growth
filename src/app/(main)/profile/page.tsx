@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
@@ -19,10 +19,16 @@ import {
   Key,
   Eye,
   EyeOff,
+  AlertCircle,
+  RefreshCw,
+  Upload,
+  FileJson,
+  Loader2,
 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 
 type ProfileTab = "internship" | "tasks" | "settings"
@@ -65,6 +71,11 @@ export default function ProfilePage() {
   const [tasks, setTasks] = useState<TaskData[]>([])
   const [newTaskTitle, setNewTaskTitle] = useState("")
 
+  // Additional settings
+  const [resumeTargetRole, setResumeTargetRole] = useState("")
+  const [industryFocus, setIndustryFocus] = useState("")
+  const [notificationEnabled, setNotificationEnabled] = useState(true)
+
   // API Key
   const [apiKey, setApiKey] = useState("")
   const [showApiKey, setShowApiKey] = useState(false)
@@ -72,6 +83,11 @@ export default function ProfilePage() {
   const [savingKey, setSavingKey] = useState(false)
 
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Data import
+  const [importing, setImporting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -80,7 +96,7 @@ export default function ProfilePage() {
     }
     if (status === "authenticated") {
       loadProfile()
-      fetchInternships().then(() => fetchTasks())
+      fetchInternships().then((data) => fetchTasks(data))
     }
   }, [status])
 
@@ -93,26 +109,33 @@ export default function ProfilePage() {
         setUniversity(json.data.university ?? "")
         setMajor(json.data.major ?? "")
         setHasApiKey(json.data.hasApiKey ?? false)
+        setResumeTargetRole(json.data.resumeTargetRole ?? "")
+        setIndustryFocus(json.data.industryFocus ?? "")
+        setNotificationEnabled(json.data.notificationEnabled ?? true)
       }
     } catch {
       // non-critical
     }
   }
 
-  async function fetchInternships() {
+  async function fetchInternships(): Promise<InternshipData[]> {
     try {
       const res = await fetch("/api/internships")
       const json = await res.json()
-      setInternships(json.data ?? [])
-    } catch {
-      // non-critical
+      const data = json.data ?? []
+      setInternships(data)
+      return data
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "获取实习数据失败")
+      return []
     } finally {
       setLoading(false)
     }
   }
 
-  async function fetchTasks() {
-    const active = internships.find((i) => i.isActive)
+  async function fetchTasks(list?: InternshipData[]) {
+    const source = list ?? internships
+    const active = source.find((i) => i.isActive)
     if (!active) return
     try {
       const res = await fetch(`/api/tasks?internshipId=${active.id}`)
@@ -128,7 +151,14 @@ export default function ProfilePage() {
       await fetch("/api/user/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, university, major }),
+        body: JSON.stringify({
+          name,
+          university,
+          major,
+          resumeTargetRole,
+          industryFocus,
+          notificationEnabled,
+        }),
       })
       toast.success("个人资料已保存")
     } catch {
@@ -143,7 +173,7 @@ export default function ProfilePage() {
       await fetch("/api/user/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ openaiApiKey: apiKey.trim() }),
+        body: JSON.stringify({ encryptedApiKey: apiKey.trim() }),
       })
       setHasApiKey(true)
       setApiKey("")
@@ -161,13 +191,53 @@ export default function ProfilePage() {
       await fetch("/api/user/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ openaiApiKey: null }),
+        body: JSON.stringify({ encryptedApiKey: null }),
       })
       setHasApiKey(false)
       setApiKey("")
       toast.success("API Key 已移除，已切换至演示模式")
     } catch {
       toast.error("操作失败")
+    }
+  }
+
+  async function handleImportJson() {
+    const file = fileInputRef.current?.files?.[0]
+    if (!file) return
+
+    setImporting(true)
+    try {
+      const text = await file.text()
+      const json = JSON.parse(text)
+
+      let records
+      if (Array.isArray(json)) {
+        records = json
+      } else if (json.records && Array.isArray(json.records)) {
+        records = json.records
+      } else {
+        toast.error("JSON 格式无效：需要记录数组")
+        setImporting(false)
+        return
+      }
+
+      const res = await fetch("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ records }),
+      })
+      const result = await res.json()
+
+      if (!res.ok) {
+        throw new Error(result.error ?? "导入失败")
+      }
+
+      toast.success(result.data?.message ?? `成功导入 ${records.length} 条记录`)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    } catch (e: any) {
+      toast.error(e.message ?? "导入失败，请检查文件格式")
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -249,6 +319,19 @@ export default function ProfilePage() {
       <div className="space-y-6">
         <Skeleton className="h-8 w-32" />
         <Skeleton className="h-[400px] rounded-2xl" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <AlertCircle className="w-10 h-10 text-red-400 mb-3" />
+        <p className="text-sm text-red-500 mb-4">{error}</p>
+        <Button variant="outline" size="sm" onClick={() => { setError(null); fetchInternships() }}>
+          <RefreshCw className="w-4 h-4 mr-2" />
+          重试
+        </Button>
       </div>
     )
   }
@@ -617,10 +700,114 @@ export default function ProfilePage() {
             )}
           </div>
 
+          {/* Additional Settings */}
+          <div className="rounded-xl border bg-card p-5 space-y-3">
+            <div className="flex items-center gap-2 mb-3">
+              <Settings className="w-4 h-4" />
+              <h3 className="font-medium text-sm">偏好设置</h3>
+            </div>
+
+            <div>
+              <label className="text-xs block mb-1.5 font-medium">目标岗位</label>
+              <Input
+                value={resumeTargetRole}
+                onChange={(e) => setResumeTargetRole(e.target.value)}
+                placeholder="如：产品经理"
+              />
+            </div>
+            <div>
+              <label className="text-xs block mb-1.5 font-medium">行业方向</label>
+              <Input
+                value={industryFocus}
+                onChange={(e) => setIndustryFocus(e.target.value)}
+                placeholder="如：互联网、金融"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium">每日提醒</label>
+              <Switch
+                checked={notificationEnabled}
+                onCheckedChange={(checked) => setNotificationEnabled(checked)}
+              />
+            </div>
+
+            <Button size="sm" onClick={handleSaveProfile}>
+              <Save className="w-4 h-4 mr-2" />
+              保存偏好
+            </Button>
+          </div>
+
+          {/* Data Import */}
+          <div className="rounded-xl border bg-card p-5 space-y-3">
+            <div className="flex items-center gap-2 mb-3">
+              <FileJson className="w-4 h-4" />
+              <h3 className="font-medium text-sm">数据导入</h3>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              从 JSON 文件批量导入实习记录。文件应为记录数组，每条记录包含 date、summary、workItems 等字段。
+            </p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleImportJson}
+              className="hidden"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+            >
+              {importing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  导入中...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4 mr-2" />
+                  选择 JSON 文件并导入
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Danger Zone */}
+          <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-950/20 p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <Trash2 className="w-4 h-4 text-red-500" />
+              <h3 className="font-medium text-sm text-red-600 dark:text-red-400">危险操作</h3>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              删除账户将永久删除你的所有数据，包括实习记录、知识库、STAR 案例、报告等。此操作不可撤销。
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-red-500 hover:text-red-600 border-red-200 dark:border-red-800"
+              onClick={async () => {
+                if (!confirm("确定要删除账户吗？此操作将删除所有数据且不可恢复。")) return
+                if (!confirm("再次确认：真的要删除账户吗？")) return
+                try {
+                  const res = await fetch("/api/user/account", { method: "DELETE" })
+                  if (!res.ok) throw new Error("删除失败")
+                  toast.success("账户已删除")
+                  signOut()
+                } catch {
+                  toast.error("删除失败，请重试")
+                }
+              }}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              删除账户
+            </Button>
+          </div>
+
           {/* Logout */}
           <Button
             variant="outline"
-            className="w-full text-red-500 hover:text-red-600"
+            className="w-full text-red-500 hover:text-red-600 mt-3"
             onClick={() => signOut()}
           >
             <LogOut className="w-4 h-4 mr-2" />

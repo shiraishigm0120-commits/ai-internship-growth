@@ -5,7 +5,13 @@ const IV_LEN = 12
 const TAG_LEN = 16
 
 function getKey(): Buffer {
-  const secret = process.env.AUTH_SECRET || "fallback-dev-key"
+  const secret = process.env.AUTH_SECRET
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("AUTH_SECRET must be set in production")
+    }
+    throw new Error("AUTH_SECRET is required for encryption. Set it in your .env.local file.")
+  }
   return createHash("sha256").update(secret).digest()
 }
 
@@ -22,15 +28,25 @@ export function encrypt(text: string): string {
 }
 
 export function decrypt(encoded: string): string {
-  const key = getKey()
-  const [ivB64, tagB64, dataB64] = encoded.split(":")
+  try {
+    const key = getKey()
+    const parts = encoded.split(":")
+    if (parts.length !== 3) {
+      throw new Error("Invalid encrypted data format")
+    }
 
-  const iv = Buffer.from(ivB64, "base64")
-  const tag = Buffer.from(tagB64, "base64")
-  const encrypted = Buffer.from(dataB64, "base64")
+    const [ivB64, tagB64, dataB64] = parts
+    const iv = Buffer.from(ivB64, "base64")
+    const tag = Buffer.from(tagB64, "base64")
+    const encrypted = Buffer.from(dataB64, "base64")
 
-  const decipher = createDecipheriv(ALGO, key, iv)
-  decipher.setAuthTag(tag)
+    const decipher = createDecipheriv(ALGO, key, iv)
+    decipher.setAuthTag(tag)
 
-  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8")
+    return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8")
+  } catch (error) {
+    throw new Error(
+      `Decryption failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    )
+  }
 }

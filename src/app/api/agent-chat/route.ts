@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { getOpenAI } from "@/lib/openai"
+import { getOpenAI } from "@/lib/ai-provider"
 import { prisma } from "@/lib/prisma"
 
 // ============================================================
@@ -226,24 +226,35 @@ export async function POST(req: Request) {
   const session = await auth()
   const userId = session?.user?.id ?? null
 
-  const { message } = await req.json()
+  const { message, history } = await req.json()
   if (!message) {
     return NextResponse.json({ error: "message 不能为空" }, { status: 400 })
   }
 
+  // history 就是「短期记忆」——上一轮对话的所有消息
+  const previousMessages: Array<{ role: string; content: string }> = Array.isArray(history) ? history : []
+
   const openai = getOpenAI()
-  const model = process.env.OPENAI_MODEL || "gpt-4o"
+  const model = (process.env.AI_MODEL || process.env.OPENAI_MODEL) || "gpt-4o"
 
   const messages: any[] = [
     {
       role: "system",
       content:
         userId
-          ? "你是一个实习助手 AI。你可以使用工具查询用户的实习数据。用中文回答，语气友好。回答时引用工具返回的具体数据。"
-          : "你是一个实习助手 AI（演示模式）。你可以使用工具查询演示数据。用中文回答，语气友好。回答时提及你查到的具体任务和日报内容。",
+          ? "你是一个实习助手 AI。你可以使用工具查询用户的实习数据。用中文回答，语气友好。回答时引用工具返回的具体数据。记住用户之前跟你说过的话。"
+          : "你是一个实习助手 AI（演示模式）。你可以使用工具查询演示数据。用中文回答，语气友好。记住用户之前跟你说过的话。",
     },
+    // 把之前的对话历史插进来
+    ...previousMessages,
     { role: "user", content: message },
   ]
+
+  // 构建新的历史——当前消息 + AI 最终回答
+  const newHistory = [
+    ...previousMessages,
+    { role: "user", content: message },
+  ] as Array<{ role: string; content: string }>
 
   const steps: string[] = []
 
@@ -283,10 +294,16 @@ export async function POST(req: Request) {
     }
 
     // 情况 2：LLM 直接回答
-    steps.push(`  💬 回答（${msg.content?.length ?? 0} 字）`)
+    const finalAnswer = msg.content ?? "（无回答）"
+    steps.push(`  💬 回答（${finalAnswer.length} 字）`)
+
+    // 把 AI 的回答也追加到历史里
+    newHistory.push({ role: "assistant", content: finalAnswer })
+
     return NextResponse.json({
       demo: !userId,
-      answer: msg.content ?? "（无回答）",
+      answer: finalAnswer,
+      history: newHistory,
       steps,
       toolCallsMade: i,
     })

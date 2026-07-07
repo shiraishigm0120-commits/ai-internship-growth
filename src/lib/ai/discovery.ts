@@ -17,6 +17,20 @@ export interface DailyDiscovery {
   nextAction: string // "明天建议你做 X"
 }
 
+function parseSkillArray(raw: string): { name: string; level: number }[] {
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) return parsed
+    if (parsed && typeof parsed === "object") {
+      return Object.entries(parsed).map(([name, level]) => ({
+        name,
+        level: typeof level === "number" ? level : (typeof level === "object" && level !== null ? (level as Record<string, unknown>).level as number ?? 3 : 3),
+      }))
+    }
+  } catch { /* corrupt data */ }
+  return []
+}
+
 // Runs without AI — pure data comparison. Fast, free, always works.
 export async function discoverFromData(
   userId: string
@@ -72,12 +86,8 @@ export async function discoverFromData(
 
   // Compare skill levels
   if (latestMemory && previousMemory) {
-    const currentSkills: { name: string; level: number }[] = JSON.parse(
-      latestMemory.skillsSnapshot
-    )
-    const pastSkills: { name: string; level: number }[] = JSON.parse(
-      previousMemory.skillsSnapshot
-    )
+    const currentSkills = parseSkillArray(latestMemory.skillsSnapshot)
+    const pastSkills = parseSkillArray(previousMemory.skillsSnapshot)
 
     for (const skill of currentSkills) {
       const past = pastSkills.find((s) => s.name === skill.name)
@@ -162,12 +172,10 @@ export async function discoverFromData(
 
   // Insight: challenge solved (check if openChallenges from last memory are resolved)
   if (previousMemory && latestMemory) {
-    const pastChallenges: { description: string; since: string }[] = JSON.parse(
-      previousMemory.openChallenges
-    )
-    const currentChallenges: { description: string; since: string }[] = JSON.parse(
-      latestMemory.openChallenges
-    )
+    let pastChallenges: { description: string; since: string }[] = []
+    let currentChallenges: { description: string; since: string }[] = []
+    try { pastChallenges = JSON.parse(previousMemory.openChallenges) } catch { /* corrupt */ }
+    try { currentChallenges = JSON.parse(latestMemory.openChallenges) } catch { /* corrupt */ }
 
     for (const pc of pastChallenges) {
       if (!currentChallenges.find((c) => c.description === pc.description)) {
@@ -217,10 +225,22 @@ export async function discoverFromData(
 
   // Build next action suggestion
   const memoryForNextAction = latestMemory
-    ? {
-        summary: latestMemory.summary,
-        skills: JSON.parse(latestMemory.skillsSnapshot) as { name: string; level: number }[],
-      }
+    ? (() => {
+        let skills: { name: string; level: number }[] = []
+        try {
+          const parsed = JSON.parse(latestMemory.skillsSnapshot)
+          if (Array.isArray(parsed)) {
+            skills = parsed
+          } else if (parsed && typeof parsed === "object") {
+            // Handle object format: {"skillName": level, ...}
+            skills = Object.entries(parsed).map(([name, level]) => ({
+              name,
+              level: typeof level === "number" ? level : 0,
+            }))
+          }
+        } catch { /* corrupt data */ }
+        return { summary: latestMemory.summary, skills }
+      })()
     : null
   const nextAction = await buildNextAction(userId, skillChanges, memoryForNextAction)
 
@@ -373,7 +393,7 @@ export async function deepDiscovery(
 
   try {
     const response = await openai.chat.completions.create({
-      model: model ?? process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+      model: model ?? (process.env.AI_MODEL || process.env.OPENAI_MODEL) ?? "gpt-4o-mini",
       messages: [
         { role: "system", content: DISCOVERY_PROMPT },
         {
@@ -389,8 +409,8 @@ export async function deepDiscovery(
             growthMemory: memory
               ? {
                   summary: memory.summary,
-                  skills: JSON.parse(memory.skillsSnapshot),
-                  challenges: JSON.parse(memory.openChallenges),
+                  skills: parseSkillArray(memory.skillsSnapshot),
+                  challenges: (() => { try { return JSON.parse(memory.openChallenges) } catch { return [] } })(),
                 }
               : null,
           }),

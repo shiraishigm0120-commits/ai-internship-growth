@@ -14,6 +14,7 @@ type Internship = {
 export function useActiveInternship() {
   const [internship, setInternship] = useState<Internship | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch("/api/internships")
@@ -22,9 +23,12 @@ export function useActiveInternship() {
         const active = json.data?.find((i: Internship) => i.isActive)
         if (active) setInternship(active)
       })
-      .catch(console.error)
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "获取实习信息失败")
+        console.error(err)
+      })
       .finally(() => setLoading(false))
   }, [])
 
-  return { internship, loading }
+  return { internship, loading, error }
 }

@@ -12,6 +12,33 @@ export interface GrowthMemoryData {
   careerCapital: { category: string; count: number; unit: string }[]
 }
 
+// AI may return skills as object {"name": level} or array [{name, level}]. Normalize.
+function normalizeSkillsArray(raw: unknown): { name: string; level: number; lastPracticed?: string }[] {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === "object") {
+    return Object.entries(raw as Record<string, unknown>).map(([name, value]) => ({
+      name,
+      level: typeof value === "number" ? value : (typeof value === "object" && value !== null ? (value as Record<string, unknown>).level as number ?? 3 : 3),
+    }))
+  }
+  return []
+}
+
+// AI may return career capital as object {"category": count} or array [{category, count, unit}]
+function normalizeCareerCapitalArray(raw: unknown): { category: string; count: number; unit: string }[] {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === "object") {
+    return Object.entries(raw as Record<string, unknown>).map(([category, count]) => ({
+      category,
+      count: typeof count === "number" ? count : 0,
+      unit: "",
+    }))
+  }
+  return []
+}
+
 const GENERATE_PROMPT = `你是一个成长分析系统。你需要分析用户最近的实习记录，生成成长记忆。
 
 从以下数据中提取：
@@ -101,7 +128,7 @@ export async function generateGrowthMemory(
 
   try {
     const response = await openai.chat.completions.create({
-      model: model ?? process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+      model: model ?? (process.env.AI_MODEL || process.env.OPENAI_MODEL) ?? "gpt-4o-mini",
       messages: [
         { role: "system", content: GENERATE_PROMPT },
         { role: "user", content: JSON.stringify(contextData, null, 2) },
@@ -113,13 +140,13 @@ export async function generateGrowthMemory(
     const result = JSON.parse(response.choices[0]?.message?.content ?? "{}")
     return {
       summary: result.summary ?? "",
-      skills: result.skills ?? [],
+      skills: normalizeSkillsArray(result.skills),
       openChallenges: result.openChallenges ?? [],
       keyLearnings: result.keyLearnings ?? [],
       isMilestone: result.isMilestone ?? false,
       milestoneTitle: result.milestoneTitle,
       milestoneIcon: result.milestoneIcon,
-      careerCapital: result.careerCapital ?? [],
+      careerCapital: normalizeCareerCapitalArray(result.careerCapital),
     }
   } catch (error) {
     console.error("Growth memory generation failed:", error)
@@ -155,13 +182,13 @@ export async function getLatestGrowthMemory(
 
   return {
     summary: memory.summary,
-    skills: JSON.parse(memory.skillsSnapshot),
+    skills: normalizeSkillsArray(JSON.parse(memory.skillsSnapshot)),
     openChallenges: JSON.parse(memory.openChallenges),
     keyLearnings: JSON.parse(memory.keyLearnings),
     isMilestone: memory.isMilestone,
     milestoneTitle: memory.milestoneTitle ?? undefined,
     milestoneIcon: memory.milestoneIcon ?? undefined,
-    careerCapital: JSON.parse(memory.careerCapital),
+    careerCapital: normalizeCareerCapitalArray(JSON.parse(memory.careerCapital)),
   }
 }
 

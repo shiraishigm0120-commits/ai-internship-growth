@@ -4,7 +4,6 @@ import { useState, useRef, useEffect } from "react"
 import { motion } from "framer-motion"
 import { Sparkles, Save, RotateCcw } from "lucide-react"
 import { useChatStream } from "@/hooks/use-chat-stream"
-import { useActiveInternship } from "@/hooks/use-active-internship"
 import { ChatBubble, TypingIndicator } from "./chat-bubble"
 import { ChatInput } from "./chat-input"
 import { ExtractionSummary } from "./extraction-summary"
@@ -12,10 +11,14 @@ import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import type { ExtractedData } from "@/types"
 
-export function DailyRecordChat({ onSaved }: { onSaved?: () => void }) {
-  const { internship } = useActiveInternship()
-  const { messages, isLoading, isComplete, summaryReady, sendMessage, reset, clearDraft } =
-    useChatStream(internship?.id)
+interface Props {
+  internshipId?: string
+  onSaved?: () => void
+}
+
+export function DailyRecordChat({ internshipId, onSaved }: Props) {
+  const { messages, isLoading, isComplete, summaryReady, error, sendMessage, reset, clearDraft } =
+    useChatStream(internshipId)
   const [showExtraction, setShowExtraction] = useState(false)
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null)
   const [isExtracting, setIsExtracting] = useState(false)
@@ -59,13 +62,13 @@ export function DailyRecordChat({ onSaved }: { onSaved?: () => void }) {
   }
 
   const handleSave = async () => {
-    if (!internship?.id) return
+    if (!internshipId) return
     try {
       const response = await fetch("/api/daily-records", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          internshipId: internship.id,
+          internshipId,
           conversation: messages,
           extracted: extractedData, // Pass already-extracted data to avoid re-running AI
         }),
@@ -167,6 +170,17 @@ export function DailyRecordChat({ onSaved }: { onSaved?: () => void }) {
           AI 会像导师一样，一步一步引导你回顾今天的工作。
           <br />
           放松心情，像聊天一样自然回答就好。
+        </motion.p>
+      )}
+
+      {/* Chat Error */}
+      {error && (
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-center text-sm text-red-500 mt-3"
+        >
+          {error}
         </motion.p>
       )}
 

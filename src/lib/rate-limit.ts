@@ -68,44 +68,41 @@ export async function rateLimitSync(
   const resetAt = new Date(now + windowMs)
 
   try {
-    // Clean up expired entries for this key
-    await prisma.rateLimit.deleteMany({
-      where: { key, resetAt: { lte: new Date() } },
-    })
+    // Use a transaction for atomic read-check-increment
+    const result = await prisma.$transaction(async (tx) => {
+      const existing = await tx.rateLimit.findUnique({ where: { key } })
 
-    const entry = await prisma.rateLimit.upsert({
-      where: { key },
-      create: { key, count: 1, resetAt },
-      update: {},
-    })
-
-    // If entry exists and hasn't expired, increment
-    if (new Date(entry.resetAt).getTime() > now) {
-      if (entry.count >= limit) {
-        return {
-          success: false,
-          remaining: 0,
-          reset: new Date(entry.resetAt).getTime(),
+      // Entry exists and hasn't expired — check and increment
+      if (existing && new Date(existing.resetAt).getTime() > now) {
+        if (existing.count >= limit) {
+          return { blocked: true, reset: new Date(existing.resetAt).getTime() } as const
         }
+        const updated = await tx.rateLimit.update({
+          where: { key },
+          data: { count: { increment: 1 } },
+        })
+        return {
+          blocked: false,
+          count: updated.count,
+          reset: new Date(updated.resetAt).getTime(),
+        } as const
       }
-      await prisma.rateLimit.update({
+
+      // No entry or expired — create/reset
+      await tx.rateLimit.upsert({
         where: { key },
-        data: { count: { increment: 1 } },
+        create: { key, count: 1, resetAt },
+        update: { count: 1, resetAt },
       })
-      const newCount = entry.count + 1
-      return {
-        success: true,
-        remaining: limit - newCount,
-        reset: new Date(entry.resetAt).getTime(),
-      }
+
+      return { blocked: false, count: 1, reset: resetAt.getTime() } as const
+    })
+
+    if (result.blocked) {
+      return { success: false, remaining: 0, reset: result.reset }
     }
 
-    // Entry expired, reset
-    await prisma.rateLimit.update({
-      where: { key },
-      data: { count: 1, resetAt },
-    })
-    return { success: true, remaining: limit - 1, reset: resetAt.getTime() }
+    return { success: true, remaining: limit - result.count, reset: result.reset }
   } catch {
     // DB unreachable — fall back to memory-only
     return rateLimit(key, limit, windowMs)

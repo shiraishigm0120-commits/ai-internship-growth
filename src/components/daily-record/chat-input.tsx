@@ -56,6 +56,7 @@ export function ChatInput({ onSend, isLoading, disabled }: ChatInputProps) {
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="输入你的回答..."
+          aria-label="输入你的回答"
           rows={1}
           className={cn(
             "flex-1 resize-none bg-secondary rounded-xl px-4 py-2.5 text-sm",
@@ -68,6 +69,7 @@ export function ChatInput({ onSend, isLoading, disabled }: ChatInputProps) {
         <button
           onClick={handleSend}
           disabled={!value.trim() || isLoading}
+          aria-label="发送消息"
           className={cn(
             "w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all",
             value.trim() && !isLoading

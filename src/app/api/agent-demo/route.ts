@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getOpenAI } from "@/lib/openai"
+import { getOpenAI } from "@/lib/ai-provider"
 
 // ---------- 这是 Agent 的 "手" ———————
 
@@ -79,7 +79,7 @@ export async function POST(req: Request) {
   }
 
   const openai = getOpenAI()
-  const model = process.env.OPENAI_MODEL || "gpt-4o"
+  const model = (process.env.AI_MODEL || process.env.OPENAI_MODEL) || "gpt-4o"
 
   const messages: Array<{
     role: "system" | "user" | "assistant" | "tool"

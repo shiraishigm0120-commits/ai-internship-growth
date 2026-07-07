@@ -1,94 +1,117 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { handleApiError } from "@/lib/api-utils"
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  try {
+    const session = await auth()
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { id } = await params
-  const starCase = await prisma.sTARCase.findUnique({
-    where: { id },
-    include: { internship: { select: { userId: true } } },
-  })
-  if (!starCase || starCase.internship.userId !== session.user.id) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 })
+    const { id } = await params
+    const starCase = await prisma.sTARCase.findUnique({
+      where: { id },
+      include: { internship: { select: { userId: true } } },
+    })
+    if (!starCase || starCase.internship.userId !== session.user.id) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 })
+    }
+
+    let skills: string[] = []
+    let tags: string[] = []
+    try { skills = JSON.parse(starCase.skills) } catch { /* corrupt data */ }
+    try { tags = JSON.parse(starCase.tags) } catch { /* corrupt data */ }
+
+    return NextResponse.json({
+      data: {
+        ...starCase,
+        skills,
+        tags,
+        createdAt: starCase.createdAt.toISOString(),
+        updatedAt: starCase.updatedAt.toISOString(),
+      },
+    })
+  } catch (error) {
+    return handleApiError(error, "GET /api/star-cases/[id]")
   }
-
-  return NextResponse.json({
-    data: {
-      ...starCase,
-      skills: JSON.parse(starCase.skills),
-      tags: JSON.parse(starCase.tags),
-      createdAt: starCase.createdAt.toISOString(),
-      updatedAt: starCase.updatedAt.toISOString(),
-    },
-  })
 }
 
 export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  try {
+    const session = await auth()
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { id } = await params
-  const starCase = await prisma.sTARCase.findUnique({
-    where: { id },
-    include: { internship: { select: { userId: true } } },
-  })
-  if (!starCase || starCase.internship.userId !== session.user.id) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 })
+    const { id } = await params
+    const starCase = await prisma.sTARCase.findUnique({
+      where: { id },
+      include: { internship: { select: { userId: true } } },
+    })
+    if (!starCase || starCase.internship.userId !== session.user.id) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 })
+    }
+
+    const body = await req.json()
+    const updated = await prisma.sTARCase.update({
+      where: { id },
+      data: {
+        title: body.title,
+        situation: body.situation,
+        task: body.task,
+        action: body.action,
+        result: body.result,
+        skills: body.skills ? JSON.stringify(body.skills) : undefined,
+        tags: body.tags ? JSON.stringify(body.tags) : undefined,
+        impact: body.impact,
+        isVerified: body.isVerified,
+        starRating: body.starRating,
+      },
+    })
+
+    let skills: string[] = []
+    let tags: string[] = []
+    try { skills = JSON.parse(updated.skills) } catch { /* corrupt data */ }
+    try { tags = JSON.parse(updated.tags) } catch { /* corrupt data */ }
+
+    return NextResponse.json({
+      data: {
+        ...updated,
+        skills,
+        tags,
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
+      },
+    })
+  } catch (error) {
+    return handleApiError(error, "PUT /api/star-cases/[id]")
   }
-
-  const body = await req.json()
-  const updated = await prisma.sTARCase.update({
-    where: { id },
-    data: {
-      title: body.title,
-      situation: body.situation,
-      task: body.task,
-      action: body.action,
-      result: body.result,
-      skills: body.skills ? JSON.stringify(body.skills) : undefined,
-      tags: body.tags ? JSON.stringify(body.tags) : undefined,
-      impact: body.impact,
-      isVerified: body.isVerified,
-      starRating: body.starRating,
-    },
-  })
-
-  return NextResponse.json({
-    data: {
-      ...updated,
-      skills: JSON.parse(updated.skills),
-      tags: JSON.parse(updated.tags),
-      createdAt: updated.createdAt.toISOString(),
-      updatedAt: updated.updatedAt.toISOString(),
-    },
-  })
 }
 
 export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth()
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  try {
+    const session = await auth()
+    if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const { id } = await params
-  const starCase = await prisma.sTARCase.findUnique({
-    where: { id },
-    include: { internship: { select: { userId: true } } },
-  })
-  if (!starCase || starCase.internship.userId !== session.user.id) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 })
+    const { id } = await params
+    const starCase = await prisma.sTARCase.findUnique({
+      where: { id },
+      include: { internship: { select: { userId: true } } },
+    })
+    if (!starCase || starCase.internship.userId !== session.user.id) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 })
+    }
+
+    await prisma.sTARCase.delete({ where: { id } })
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    return handleApiError(error, "DELETE /api/star-cases/[id]")
   }
-
-  await prisma.sTARCase.delete({ where: { id } })
-  return NextResponse.json({ success: true })
 }

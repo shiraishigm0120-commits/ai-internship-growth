@@ -50,6 +50,7 @@ export default function DailyRecordDetailPage() {
   const router = useRouter()
   const [record, setRecord] = useState<RecordDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login")
@@ -61,8 +62,9 @@ export default function DailyRecordDetailPage() {
       const res = await fetch(`/api/daily-records/${id}`)
       const json = await res.json()
       setRecord(json.data)
-    } catch (error) {
-      console.error("Failed to fetch record:", error)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "获取记录失败")
+      console.error("Failed to fetch record:", err)
     } finally {
       setLoading(false)
     }
@@ -77,22 +79,37 @@ export default function DailyRecordDetailPage() {
     )
   }
 
+  if (error) {
+    return (
+      <div className="text-center py-20">
+        <p className="text-red-500 text-sm mb-2">{error}</p>
+        <button
+          onClick={() => { setError(null); setLoading(true); fetchRecord() }}
+          className="text-sm text-primary hover:underline"
+        >
+          重试
+        </button>
+      </div>
+    )
+  }
+
   if (!record) {
     return (
       <div className="text-center py-20">
         <p className="text-muted-foreground">记录未找到</p>
-        <Link href="/daily-record" className="text-sm text-primary mt-2 inline-block">
-          返回记录列表
+        <Link href="/today" className="text-sm text-primary mt-2 inline-block">
+          返回仪表盘
         </Link>
       </div>
     )
   }
 
-  const conversation = JSON.parse(record.conversation) as {
-    role: string
-    content: string
-    timestamp: string
-  }[]
+  let conversation: { role: string; content: string; timestamp: string }[] = []
+  try {
+    conversation = JSON.parse(record.conversation)
+  } catch {
+    // corrupted conversation data
+  }
 
   return (
     <div className="space-y-6 max-w-2xl">

@@ -51,27 +51,32 @@ export async function generateResumeMaterials(
     )
     .join("\n\n")
 
-  const response = await openai.chat.completions.create({
-    model: model ?? process.env.OPENAI_MODEL ?? "gpt-4o",
-    temperature: 0.7,
-    messages: [
-      { role: "system", content: RESUME_SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: `目标岗位：${targetRole}\n\nSTAR 案例：\n${caseDescriptions}`,
-      },
-    ],
-  })
+  try {
+    const response = await openai.chat.completions.create({
+      model: model ?? (process.env.AI_MODEL || process.env.OPENAI_MODEL) ?? "gpt-4o",
+      temperature: 0.7,
+      messages: [
+        { role: "system", content: RESUME_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: `目标岗位：${targetRole}\n\nSTAR 案例：\n${caseDescriptions}`,
+        },
+      ],
+    })
 
-  const text = response.choices[0]?.message?.content ?? ""
-  const jsonMatch = text.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) return getFallbackResumeMaterials(starCases)
+    const text = response.choices[0]?.message?.content ?? ""
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) return getFallbackResumeMaterials(starCases)
 
-  const parsed = JSON.parse(jsonMatch[0])
-  return {
-    bullets: parsed.bullets ?? [],
-    skills: parsed.skills ?? [],
-    summary: parsed.summary ?? "",
+    const parsed = JSON.parse(jsonMatch[0])
+    return {
+      bullets: parsed.bullets ?? [],
+      skills: parsed.skills ?? [],
+      summary: parsed.summary ?? "",
+    }
+  } catch (error) {
+    console.error("OpenAI resume generation failed, using fallback:", error)
+    return getFallbackResumeMaterials(starCases)
   }
 }
 

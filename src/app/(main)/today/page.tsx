@@ -14,9 +14,12 @@ import {
   Lightbulb,
   Target,
   Zap,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react"
 import { DailyRecordChat } from "@/components/daily-record/chat-interface"
 import { useActiveInternship } from "@/hooks/use-active-internship"
+import { hasDraft } from "@/hooks/use-chat-stream"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 
@@ -59,19 +62,20 @@ interface TodayData {
 export default function TodayPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const { internship, loading: internshipLoading } = useActiveInternship()
+  const { internship, loading: internshipLoading, error: internshipError } = useActiveInternship()
   const [data, setData] = useState<TodayData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [showChat, setShowChat] = useState(false)
-  const [savedToday, setSavedToday] = useState(false)
-
   const fetchTodayData = useCallback(async () => {
+    setError(null)
     try {
       const res = await fetch("/api/stats/today")
       const json = await res.json()
       setData(json.data)
-    } catch (error) {
-      console.error("Failed to fetch today data:", error)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "获取今日数据失败")
+      console.error("Failed to fetch today data:", err)
     } finally {
       setLoading(false)
     }
@@ -88,7 +92,6 @@ export default function TodayPage() {
   }, [status, fetchTodayData])
 
   const handleChatSaved = useCallback(() => {
-    setSavedToday(true)
     setShowChat(false)
     fetchTodayData()
   }, [fetchTodayData])
@@ -107,6 +110,19 @@ export default function TodayPage() {
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-4 w-64" />
         <Skeleton className="h-[400px] rounded-2xl" />
+      </div>
+    )
+  }
+
+  if (internshipError || error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <AlertCircle className="w-10 h-10 text-red-400 mb-3" />
+        <p className="text-sm text-red-500 mb-4">{internshipError ?? error}</p>
+        <Button variant="outline" size="sm" onClick={fetchTodayData}>
+          <RefreshCw className="w-4 h-4 mr-2" />
+          重试
+        </Button>
       </div>
     )
   }
@@ -145,7 +161,7 @@ export default function TodayPage() {
             返回
           </Button>
         </div>
-        <DailyRecordChat onSaved={handleChatSaved} />
+        <DailyRecordChat internshipId={internship?.id} onSaved={handleChatSaved} />
       </div>
     )
   }
@@ -357,10 +373,22 @@ export default function TodayPage() {
                 ? `你已经连续记录了 ${data.streakDays} 天，别断了`
                 : "花 3 分钟，让 AI 帮你发现今天的成长"}
             </p>
-            <Button onClick={() => setShowChat(true)}>
-              <Play className="w-4 h-4 mr-2" />
-              开始今日回顾
-            </Button>
+            {hasDraft(internship?.id) ? (
+              <div className="flex flex-col items-center gap-2">
+                <Button onClick={() => setShowChat(true)}>
+                  <Play className="w-4 h-4 mr-2" />
+                  继续未完成的记录
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  检测到未完成的对话，点击继续
+                </span>
+              </div>
+            ) : (
+              <Button onClick={() => setShowChat(true)}>
+                <Play className="w-4 h-4 mr-2" />
+                开始今日回顾
+              </Button>
+            )}
           </motion.div>
 
           {discovery?.nextAction && (
@@ -395,10 +423,22 @@ export default function TodayPage() {
               ? "继续保持！每次记录都是成长的证据。"
               : "AI Coach 会像导师一样，帮你发现每一天的成长。像聊天一样自然，3 分钟就够了。"}
           </p>
-          <Button size="lg" onClick={() => setShowChat(true)}>
-            <Play className="w-5 h-5 mr-2" />
-            开始今日回顾
-          </Button>
+          {hasDraft(internship?.id) ? (
+            <div className="flex flex-col items-center gap-2">
+              <Button size="lg" onClick={() => setShowChat(true)}>
+                <Play className="w-5 h-5 mr-2" />
+                继续未完成的记录
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                检测到未完成的对话
+              </span>
+            </div>
+          ) : (
+            <Button size="lg" onClick={() => setShowChat(true)}>
+              <Play className="w-5 h-5 mr-2" />
+              开始今日回顾
+            </Button>
+          )}
         </motion.div>
       )}
 

@@ -20,6 +20,10 @@ function loadDraft(internshipId?: string): ChatMessage[] | null {
   return null
 }
 
+export function hasDraft(internshipId?: string): boolean {
+  return loadDraft(internshipId) !== null
+}
+
 function saveDraft(internshipId: string | undefined, messages: ChatMessage[]) {
   if (typeof window === "undefined") return
   const key = STORAGE_PREFIX + (internshipId ?? "default")
@@ -54,16 +58,42 @@ export function useChatStream(internshipId?: string) {
   const [isLoading, setIsLoading] = useState(false)
   const [isComplete, setIsComplete] = useState(false)
   const [summaryReady, setSummaryReady] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const messagesRef = useRef(messages)
 
-  // Persist messages to localStorage whenever they change
+  // Keep ref in sync so sendMessage always has the latest messages
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
+
+  // Persist messages to localStorage so drafts survive refreshes
   useEffect(() => {
     saveDraft(internshipId, messages)
   }, [messages, internshipId])
 
+  // Safety net: save on page unload
+  useEffect(() => {
+    const onUnload = () => saveDraft(internshipId, messagesRef.current)
+    window.addEventListener("beforeunload", onUnload)
+    return () => window.removeEventListener("beforeunload", onUnload)
+  }, [internshipId])
+
+  // Reload draft when internshipId changes (handles async ID resolution)
+  useEffect(() => {
+    const draft = loadDraft(internshipId)
+    if (draft) {
+      setMessages(draft)
+      setIsComplete(false)
+      setSummaryReady(false)
+    }
+  }, [internshipId])
+
   const sendMessage = useCallback(
     async (content: string) => {
       if (!content.trim() || isLoading) return
+
+      setError(null)
 
       const userMsg: ChatMessage = {
         role: "user",
@@ -74,7 +104,7 @@ export function useChatStream(internshipId?: string) {
       setMessages((prev) => [...prev, userMsg])
       setIsLoading(true)
 
-      const updatedMessages = [...messages, userMsg]
+      const updatedMessages = [...messagesRef.current, userMsg]
 
       abortRef.current = new AbortController()
 
@@ -99,6 +129,7 @@ export function useChatStream(internshipId?: string) {
 
         const decoder = new TextDecoder()
         let assistantContent = ""
+        let lineBuffer = ""
 
         const assistantMsg: ChatMessage = {
           role: "assistant",
@@ -108,58 +139,90 @@ export function useChatStream(internshipId?: string) {
 
         setMessages((prev) => [...prev, assistantMsg])
 
+        // 30s timeout to prevent a hanging stream from blocking the UI forever
+        const streamTimeout = setTimeout(() => {
+          abortRef.current?.abort()
+        }, 30_000)
+
         while (true) {
           const { done, value } = await reader.read()
-          if (done) break
+          if (done) {
+            // Process any remaining data in the buffer
+            if (lineBuffer && lineBuffer.startsWith("data: ")) {
+              const data = lineBuffer.slice(6)
+              if (data !== "[DONE]") {
+                try {
+                  const parsed = JSON.parse(data)
+                  if (parsed.content) {
+                    assistantContent += parsed.content
+                    setMessages((prev) => {
+                      const updated = [...prev]
+                      updated[updated.length - 1] = {
+                        ...updated[updated.length - 1],
+                        content: assistantContent,
+                      }
+                      return updated
+                    })
+                  }
+                } catch { /* skip malformed remnant */ }
+              }
+            }
+            break
+          }
 
           const chunk = decoder.decode(value, { stream: true })
-          const lines = chunk.split("\n")
+          lineBuffer += chunk
+          const lines = lineBuffer.split("\n")
+          // Keep the last potentially incomplete line in the buffer
+          lineBuffer = lines.pop() ?? ""
 
           for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6)
-              if (data === "[DONE]") {
-                // Check if summary is ready
-                if (assistantContent.includes("[SUMMARY_READY]")) {
-                  setSummaryReady(true)
-                  assistantContent = assistantContent.replace(
-                    "[SUMMARY_READY]",
-                    ""
-                  )
-                }
-                continue
+            if (!line.startsWith("data: ")) continue
+            const data = line.slice(6)
+            if (data === "[DONE]") {
+              if (assistantContent.includes("[SUMMARY_READY]")) {
+                setSummaryReady(true)
+                assistantContent = assistantContent.replace("[SUMMARY_READY]", "")
               }
+              continue
+            }
 
-              try {
-                const parsed = JSON.parse(data)
-                if (parsed.content) {
-                  assistantContent += parsed.content
-                  setMessages((prev) => {
-                    const updated = [...prev]
-                    updated[updated.length - 1] = {
-                      ...updated[updated.length - 1],
-                      content: assistantContent,
-                    }
-                    return updated
-                  })
-                }
-              } catch {
-                // skip parse errors
+            try {
+              const parsed = JSON.parse(data)
+              if (parsed.content) {
+                assistantContent += parsed.content
+                setMessages((prev) => {
+                  const updated = [...prev]
+                  updated[updated.length - 1] = {
+                    ...updated[updated.length - 1],
+                    content: assistantContent,
+                  }
+                  return updated
+                })
               }
+            } catch {
+              // skip parse errors from malformed chunks
             }
           }
         }
 
+        clearTimeout(streamTimeout)
+
         setIsComplete(true)
-      } catch (error: unknown) {
-        if (error instanceof Error && error.name === "AbortError") return
-        console.error("Chat error:", error)
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") {
+          setError("响应超时，请重试")
+          return
+        }
+        const msg = err instanceof Error ? err.message : "发送失败，请重试"
+        setError(msg)
+        console.error("Chat error:", err)
       } finally {
         setIsLoading(false)
         abortRef.current = null
       }
     },
-    [messages, isLoading, internshipId]
+    [isLoading, internshipId]
   )
 
   const reset = useCallback(() => {
@@ -171,6 +234,7 @@ export function useChatStream(internshipId?: string) {
     setIsLoading(false)
     setIsComplete(false)
     setSummaryReady(false)
+    setError(null)
   }, [internshipId])
 
   return {
@@ -178,6 +242,7 @@ export function useChatStream(internshipId?: string) {
     isLoading,
     isComplete,
     summaryReady,
+    error,
     sendMessage,
     reset,
     clearDraft: () => clearDraft(internshipId),

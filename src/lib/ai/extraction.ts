@@ -99,7 +99,7 @@ export async function extractDataFromConversation(
 
   try {
     const response = await openai.chat.completions.create({
-      model: model ?? process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+      model: model ?? (process.env.AI_MODEL || process.env.OPENAI_MODEL) ?? "gpt-4o-mini",
       messages: [
         { role: "system", content: EXTRACTION_SYSTEM_PROMPT },
         {
@@ -154,7 +154,7 @@ export async function generateCoachFeedback(
 
   try {
     const response = await openai.chat.completions.create({
-      model: model ?? process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+      model: model ?? (process.env.AI_MODEL || process.env.OPENAI_MODEL) ?? "gpt-4o-mini",
       messages: [
         { role: "system", content: COACH_FEEDBACK_PROMPT },
         {

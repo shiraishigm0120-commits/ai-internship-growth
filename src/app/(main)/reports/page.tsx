@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { FileText, Download, Eye, EyeOff, Plus, Loader2, Trash2, Calendar } from "lucide-react"
+import { FileText, Download, Eye, EyeOff, Plus, Loader2, Trash2, Calendar, AlertCircle, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ExportMenu } from "@/components/export/export-menu"
+import { ShareButton } from "@/components/share/share-button"
 import { toast } from "sonner"
 
 interface Report {
@@ -25,11 +27,20 @@ const REPORT_TYPES = [
 export default function ReportsPage() {
   const [reports, setReports] = useState<Report[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [formTitle, setFormTitle] = useState("")
   const [formType, setFormType] = useState("INTERNSHIP_SUMMARY")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [sections, setSections] = useState({
+    workItems: true,
+    knowledge: true,
+    achievements: true,
+  })
 
   const fetchReports = useCallback(async () => {
     try {
@@ -38,8 +49,8 @@ export default function ReportsPage() {
         const json = await res.json()
         setReports(json.data ?? [])
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "获取报告数据失败")
     } finally {
       setLoading(false)
     }
@@ -63,6 +74,12 @@ export default function ReportsPage() {
           title: formTitle.trim(),
           type: formType,
           format: "MARKDOWN",
+          dateRange: dateFrom || dateTo
+            ? { from: dateFrom || undefined, to: dateTo || undefined }
+            : undefined,
+          sections: Object.entries(sections)
+            .filter(([, v]) => v)
+            .map(([k]) => k),
         }),
       })
       if (!res.ok) {
@@ -73,6 +90,10 @@ export default function ReportsPage() {
       setReports((prev) => [json.data, ...prev])
       setShowForm(false)
       setFormTitle("")
+      setDateFrom("")
+      setDateTo("")
+      setShowAdvanced(false)
+      setSections({ workItems: true, knowledge: true, achievements: true })
       toast.success("报告生成成功！")
       setExpandedId(json.data.id)
     } catch (e: any) {
@@ -95,6 +116,21 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url)
   }
 
+  async function handleDelete(reportId: string) {
+    try {
+      const res = await fetch(`/api/reports/${reportId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const json = await res.json()
+        throw new Error(json.error ?? "删除失败")
+      }
+      setReports((prev) => prev.filter((r) => r.id !== reportId))
+      if (expandedId === reportId) setExpandedId(null)
+      toast.success("报告已删除")
+    } catch (e: any) {
+      toast.error(e.message ?? "删除失败，请重试")
+    }
+  }
+
   return (
     <main className="max-w-4xl mx-auto py-8 px-4 space-y-6">
       {/* Header */}
@@ -105,14 +141,17 @@ export default function ReportsPage() {
             根据你的实习记录，一键生成 Markdown 格式的实习报告
           </p>
         </div>
-        <Button
-          onClick={() => setShowForm(true)}
-          disabled={showForm}
-          className="shrink-0"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          生成报告
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <ShareButton type="timeline" />
+          <ExportMenu />
+          <Button
+            onClick={() => setShowForm(true)}
+            disabled={showForm}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            生成报告
+          </Button>
+        </div>
       </div>
 
       {/* Generate Form */}
@@ -157,8 +196,95 @@ export default function ReportsPage() {
                 </div>
               </div>
 
+              {/* Advanced options toggle */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="text-sm text-muted-foreground hover:text-foreground transition flex items-center gap-1"
+                >
+                  <span>{showAdvanced ? "收起高级选项 ▲" : "展开高级选项 ▼"}</span>
+                </button>
+              </div>
+
+              <AnimatePresence>
+                {showAdvanced && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="space-y-4 pt-2">
+                      {/* Date Range */}
+                      <div>
+                        <label className="text-sm font-medium mb-1.5 block">
+                          日期范围（可选，不选则包含所有记录）
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="date"
+                            value={dateFrom}
+                            onChange={(e) => setDateFrom(e.target.value)}
+                            className="flex-1 bg-background border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                          <span className="text-xs text-muted-foreground">至</span>
+                          <input
+                            type="date"
+                            value={dateTo}
+                            onChange={(e) => setDateTo(e.target.value)}
+                            className="flex-1 bg-background border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Section toggles */}
+                      <div>
+                        <label className="text-sm font-medium mb-1.5 block">
+                          报告包含内容
+                        </label>
+                        <div className="flex gap-3 flex-wrap">
+                          {[
+                            { key: "workItems", label: "工作成果" },
+                            { key: "knowledge", label: "学习知识" },
+                            { key: "achievements", label: "成就" },
+                          ].map(({ key, label }) => (
+                            <label
+                              key={key}
+                              className="flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={sections[key as keyof typeof sections]}
+                                onChange={(e) =>
+                                  setSections((prev) => ({
+                                    ...prev,
+                                    [key]: e.target.checked,
+                                  }))
+                                }
+                                className="w-4 h-4 rounded accent-primary"
+                              />
+                              <span className="text-sm">{label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setShowForm(false)}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowForm(false)
+                    setDateFrom("")
+                    setDateTo("")
+                    setShowAdvanced(false)
+                    setSections({ workItems: true, knowledge: true, achievements: true })
+                  }}
+                >
                   取消
                 </Button>
                 <Button onClick={handleGenerate} disabled={generating}>
@@ -180,6 +306,15 @@ export default function ReportsPage() {
               <div className="h-3 bg-muted rounded w-1/4" />
             </div>
           ))}
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <AlertCircle className="w-10 h-10 text-red-400 mb-3" />
+          <p className="text-sm text-red-500 mb-4">{error}</p>
+          <Button variant="outline" size="sm" onClick={() => { setError(null); fetchReports() }}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            重试
+          </Button>
         </div>
       ) : reports.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -233,6 +368,17 @@ export default function ReportsPage() {
                       <Download className="w-4 h-4" />
                     </Button>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDelete(report.id)
+                    }}
+                    className="h-8 w-8 p-0 text-red-400 hover:text-red-500"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                   {expandedId === report.id ? (
                     <EyeOff className="w-4 h-4 text-muted-foreground" />
                   ) : (

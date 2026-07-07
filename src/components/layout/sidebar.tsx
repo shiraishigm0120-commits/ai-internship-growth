@@ -13,7 +13,6 @@ import {
   TrendingUp,
   Briefcase,
   User,
-  FileText,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -47,12 +46,6 @@ const navItems = [
     label: "能力资产",
     icon: Briefcase,
     description: "STAR & 简历 & 知识",
-  },
-  {
-    href: "/reports",
-    label: "实习报告",
-    icon: FileText,
-    description: "生成 & 导出报告",
   },
   {
     href: "/profile",
@@ -155,6 +148,7 @@ export function Sidebar() {
         {/* Theme Toggle */}
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          aria-label={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
           className={cn(
             "flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all",
             collapsed && "justify-center px-0"
@@ -170,25 +164,24 @@ export function Sidebar() {
 
         {/* User Menu */}
         <DropdownMenu>
-          <DropdownMenuTrigger>
-            <button
-              className={cn(
-                "flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all",
-                collapsed && "justify-center px-0"
-              )}
-            >
-              <Avatar className="w-6 h-6 flex-shrink-0">
-                <AvatarImage src={session?.user?.image ?? ""} />
-                <AvatarFallback className="text-[10px] bg-sidebar-accent text-sidebar-accent-foreground">
-                  {session?.user?.name?.slice(0, 2) ?? "U"}
-                </AvatarFallback>
-              </Avatar>
-              {!collapsed && (
-                <span className="truncate text-xs">
-                  {session?.user?.name ?? "用户"}
-                </span>
-              )}
-            </button>
+          <DropdownMenuTrigger
+            aria-label="用户菜单"
+            className={cn(
+              "flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all",
+              collapsed && "justify-center px-0"
+            )}
+          >
+            <Avatar className="w-6 h-6 flex-shrink-0 pointer-events-none">
+              <AvatarImage src={session?.user?.image || undefined} />
+              <AvatarFallback className="text-[10px] bg-sidebar-accent text-sidebar-accent-foreground">
+                {session?.user?.name?.slice(0, 2) ?? "U"}
+              </AvatarFallback>
+            </Avatar>
+            {!collapsed && (
+              <span className="truncate text-xs pointer-events-none">
+                {session?.user?.name ?? "用户"}
+              </span>
+            )}
           </DropdownMenuTrigger>
           <DropdownMenuContent side="right" align="end" className="w-48">
             <Link href="/profile">
@@ -208,6 +201,7 @@ export function Sidebar() {
         {/* Collapse Toggle */}
         <button
           onClick={() => setCollapsed(!collapsed)}
+          aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}
           className={cn(
             "flex items-center gap-3 w-full px-3 py-1.5 rounded-lg text-xs text-sidebar-foreground/35 hover:text-sidebar-foreground/60 transition-all",
             collapsed && "justify-center px-0"
