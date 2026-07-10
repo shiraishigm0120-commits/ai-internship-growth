@@ -5,6 +5,7 @@ import { resolveUserAI } from "@/lib/ai-provider"
 import { extractDataFromConversation, generateCoachFeedback } from "@/lib/ai/extraction"
 import { generateGrowthMemory, saveGrowthMemory } from "@/lib/ai/growth-memory"
 import { handleApiError } from "@/lib/api-utils"
+import { syncFunnelToFeishu } from "@/lib/feishu"
 import type { ExtractedData } from "@/types"
 
 export async function GET(req: Request) {
@@ -197,8 +198,65 @@ export async function POST(req: Request) {
         }
       }
 
+      // Save funnel data if any funnel numbers were extracted
+      if (extracted.funnel) {
+        const f = extracted.funnel
+        const hasFunnelData = (f.totalApplications ?? 0) > 0 || (f.passedScreening ?? 0) > 0 || (f.passedBusinessReview ?? 0) > 0 || (f.interviewAttendees ?? 0) > 0 || (f.offersSent ?? 0) > 0 || (f.offersAccepted ?? 0) > 0 || (f.onboarded ?? 0) > 0
+        if (hasFunnelData) {
+          const funnelExisting = await tx.recruitmentFunnel.findUnique({
+            where: { internshipId_date: { internshipId, date: today } },
+          })
+          if (funnelExisting) {
+            await tx.recruitmentFunnel.update({
+              where: { id: funnelExisting.id },
+              data: {
+                totalApplications: f.totalApplications ?? funnelExisting.totalApplications,
+                passedScreening: f.passedScreening ?? funnelExisting.passedScreening,
+                passedBusinessReview: f.passedBusinessReview ?? funnelExisting.passedBusinessReview,
+                interviewAttendees: f.interviewAttendees ?? funnelExisting.interviewAttendees,
+                offersSent: f.offersSent ?? funnelExisting.offersSent,
+                offersAccepted: f.offersAccepted ?? funnelExisting.offersAccepted,
+                onboarded: f.onboarded ?? funnelExisting.onboarded,
+              },
+            })
+          } else {
+            await tx.recruitmentFunnel.create({
+              data: {
+                internshipId,
+                date: today,
+                totalApplications: f.totalApplications ?? 0,
+                passedScreening: f.passedScreening ?? 0,
+                passedBusinessReview: f.passedBusinessReview ?? 0,
+                interviewAttendees: f.interviewAttendees ?? 0,
+                offersSent: f.offersSent ?? 0,
+                offersAccepted: f.offersAccepted ?? 0,
+                onboarded: f.onboarded ?? 0,
+                note: "AI从今日对话自动提取",
+              },
+            })
+          }
+        }
+      }
+
       return record
     })
+
+    // Sync today's funnel to Feishu (non-critical, after transaction)
+    const savedFunnel = await prisma.recruitmentFunnel.findUnique({
+      where: { internshipId_date: { internshipId, date: today } },
+    })
+    if (savedFunnel) {
+      await syncFunnelToFeishu(today, {
+        totalApplications: savedFunnel.totalApplications,
+        passedScreening: savedFunnel.passedScreening,
+        passedBusinessReview: savedFunnel.passedBusinessReview,
+        interviewAttendees: savedFunnel.interviewAttendees,
+        offersSent: savedFunnel.offersSent,
+        offersAccepted: savedFunnel.offersAccepted,
+        onboarded: savedFunnel.onboarded,
+        note: savedFunnel.note ?? undefined,
+      })
+    }
 
     // Fetch with relations
     const fullRecord = await prisma.dailyRecord.findUnique({

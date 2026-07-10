@@ -4,6 +4,16 @@ export interface ChatMessage {
   timestamp: string
 }
 
+export interface FunnelExtraction {
+  totalApplications?: number
+  passedScreening?: number
+  passedBusinessReview?: number
+  interviewAttendees?: number
+  offersSent?: number
+  offersAccepted?: number
+  onboarded?: number
+}
+
 export interface ExtractedData {
   workItems: {
     type: string
@@ -38,6 +48,7 @@ export interface ExtractedData {
   milestoneCategory?: string
   skillChanges?: { name: string; from: number; to: number }[]
   reflection?: string
+  funnel?: FunnelExtraction
 }
 
 export interface DashboardData {

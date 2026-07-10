@@ -104,9 +104,10 @@ model Internship {
   user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   dailyRecords     DailyRecord[]
   tasks            Task[]
-  reports          Report[]
-  starCases        STARCase[]
-  resumeMaterials  ResumeMaterial[]
+  reports            Report[]
+  starCases          STARCase[]
+  resumeMaterials    ResumeMaterial[]
+  recruitmentFunnels RecruitmentFunnel[]
 
   @@index([userId])
 }
@@ -382,6 +383,35 @@ model Goal {
 
   @@index([userId])
   @@index([status])
+}
+
+model RecruitmentFunnel {
+  id                    String   @id @default(cuid())
+  internshipId          String
+  date                  DateTime
+
+  // 第一层：简历投递量
+  totalApplications     Int      @default(0)
+  // 第二层：初筛通过数
+  passedScreening       Int      @default(0)
+  // 第三层：业务筛选通过数
+  passedBusinessReview  Int      @default(0)
+  // 第四层：面试到场数
+  interviewAttendees    Int      @default(0)
+  // 第五层：Offer发出数
+  offersSent            Int      @default(0)
+  // 第六层：Offer接受 + 入职
+  offersAccepted        Int      @default(0)
+  onboarded             Int      @default(0)
+
+  note                  String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  internship Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+
+  @@unique([internshipId, date])
+  @@index([internshipId])
 }
 
 model ShareLink {

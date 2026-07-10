@@ -22,6 +22,7 @@ import { ExportMenu } from "@/components/export/export-menu"
 import { ShareButton } from "@/components/share/share-button"
 import { toast } from "sonner"
 import SkillTrendChart from "@/components/charts/skill-trend-chart"
+import FunnelChart from "@/components/charts/funnel-chart"
 
 interface TimelineData {
   milestones: {
@@ -75,6 +76,36 @@ const GOAL_CATEGORIES: Record<string, string> = {
 
 const INCREMENTS = [1, 5, 10]
 
+interface FunnelRow {
+  label: string
+  totalApplications: number
+  passedScreening: number
+  passedBusinessReview: number
+  interviewAttendees: number
+  offersSent: number
+  offersAccepted: number
+  onboarded: number
+}
+
+interface FunnelTotal {
+  totalApplications: number
+  passedScreening: number
+  passedBusinessReview: number
+  interviewAttendees: number
+  offersSent: number
+  offersAccepted: number
+  onboarded: number
+}
+
+interface FunnelData {
+  daily: FunnelRow[]
+  weekly: FunnelRow[]
+  monthly: FunnelRow[]
+  total: FunnelTotal | null
+  stages: { key: string; label: string; shortLabel: string }[]
+  health: { from: string; to: string; label: string; low: number; high: number; lowLabel: string; highLabel: string }[]
+}
+
 export default function TimelinePage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -96,6 +127,10 @@ export default function TimelinePage() {
   })
   const [submittingGoal, setSubmittingGoal] = useState(false)
 
+  // Funnel state
+  const [funnelData, setFunnelData] = useState<FunnelData | null>(null)
+  const [funnelLoading, setFunnelLoading] = useState(true)
+
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/login")
@@ -104,6 +139,7 @@ export default function TimelinePage() {
     if (status === "authenticated") {
       fetchTimeline()
       fetchGoals()
+      fetchFunnel()
     }
   }, [status])
 
@@ -132,6 +168,20 @@ export default function TimelinePage() {
       console.error("Failed to fetch goals:", err)
     } finally {
       setGoalsLoading(false)
+    }
+  }, [])
+
+  const fetchFunnel = useCallback(async () => {
+    try {
+      const res = await fetch("/api/stats/funnel")
+      if (res.ok) {
+        const json = await res.json()
+        setFunnelData(json.data)
+      }
+    } catch (err) {
+      console.error("Failed to fetch funnel:", err)
+    } finally {
+      setFunnelLoading(false)
     }
   }, [])
 
@@ -637,6 +687,21 @@ export default function TimelinePage() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Recruitment Funnel */}
+          {!funnelLoading && (
+            <div className="rounded-2xl border bg-card p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <TrendingUp className="w-5 h-5 text-blue-500" />
+                <h2 className="font-semibold">招聘漏斗</h2>
+              </div>
+              {funnelData ? (
+                <FunnelChart data={funnelData} onRefresh={fetchFunnel} />
+              ) : (
+                <div className="h-48 bg-muted rounded-xl animate-pulse" />
+              )}
             </div>
           )}
 
