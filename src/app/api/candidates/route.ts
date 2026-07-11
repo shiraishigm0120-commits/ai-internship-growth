@@ -8,9 +8,9 @@ import { pullCandidatesFromFeishu } from "@/lib/feishu"
 const lastPull = new Map<string, number>()
 const PULL_TTL_MS = 30_000
 
-// Board column order (matches the funnel stages + terminal states).
+// Board column order — must match the Feishu 当前阶段 single-select options exactly.
 export const BOARD_STAGES = [
-  "推荐简历", "业务筛选", "邀约面试", "已面试", "面试通过", "Offer", "待入职", "已入职", "已淘汰",
+  "推荐简历", "业务筛选", "邀约面试", "已面试待反馈", "面试通过-流程中", "Offer", "待入职", "已入职", "已淘汰",
 ] as const
 
 export async function GET() {
