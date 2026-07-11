@@ -150,7 +150,16 @@ export default function CandidateBoard() {
                 ) : (
                   <div className="flex gap-3 overflow-x-auto pb-2">
                     {stages
-                      .map((stage) => ({ stage, items: inPos.filter((c) => c.currentStage === stage) }))
+                      .map((stage) => {
+                        let items = inPos.filter((c) => c.currentStage === stage)
+                        // 邀约面试：按约面时间排序，最近的在前，方便查看即将到来的面试
+                        if (stage === "邀约面试") {
+                          items = [...items].sort((a, b) =>
+                            (a.interviewScheduledAt ?? "~").localeCompare(b.interviewScheduledAt ?? "~")
+                          )
+                        }
+                        return { stage, items }
+                      })
                       .filter(({ items }) => items.length > 0)
                       .map(({ stage, items }) => (
                         <div key={stage} className="min-w-[150px] flex-shrink-0">
@@ -173,10 +182,16 @@ export default function CandidateBoard() {
                                     </span>
                                   )}
                                 </div>
-                                {c.interviewScheduledAt && (
-                                  <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-0.5 leading-tight">
+                                {c.interviewScheduledAt ? (
+                                  <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-0.5 leading-tight font-medium">
                                     🗓 面试 {c.interviewScheduledAt}
                                   </p>
+                                ) : (
+                                  stage === "邀约面试" && (
+                                    <p className="text-[10px] text-red-500 mt-0.5 leading-tight">
+                                      ⚠️ 未约面试时间
+                                    </p>
+                                  )
                                 )}
                                 {c.statusNote && (
                                   <p className="text-[10px] text-amber-600 dark:text-amber-500 mt-0.5 leading-tight">
