@@ -343,12 +343,25 @@ function dateToMs(d: Date | null | undefined): number | undefined {
   return beijingMidnightMs(new Date(d))
 }
 
+// Normalize a free-text position into one of the canonical single-select
+// options so writes never create stray options in Feishu.
+function normalizePosition(p: string | null | undefined): string {
+  const s = (p ?? "").trim()
+  if (!s) return ""
+  if (s.includes("抽卡")) return "抽卡师"
+  if (s.includes("编剧")) return "短剧编剧"
+  if (s.includes("内容策划") || s.includes("内容策略")) return "内容策划运营"
+  if (s.includes("审核")) return "剧本审核专员"
+  if (s.includes("运营")) return "短剧运营"
+  return s
+}
+
 function buildCandidateFields(c: CandidateFields): Record<string, unknown> {
   const fields: Record<string, unknown> = {
     姓名: c.name,
     当前阶段: c.currentStage,
   }
-  if (c.position !== undefined) fields["岗位"] = c.position ?? ""
+  if (c.position !== undefined) fields["岗位"] = normalizePosition(c.position)
   if (c.statusNote !== undefined) fields["状态备注"] = c.statusNote ?? ""
   const dateMap: [string, Date | null | undefined][] = [
     ["推荐日期", c.recommendedDate],
