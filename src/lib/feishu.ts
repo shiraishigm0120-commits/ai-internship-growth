@@ -1,5 +1,6 @@
 import { logger } from "@/lib/logger"
 import { prisma } from "@/lib/prisma"
+import type { TodoItem } from "@/lib/recruitment-todos"
 
 const BASE = "https://open.feishu.cn/open-apis"
 
@@ -7,6 +8,8 @@ const BASE = "https://open.feishu.cn/open-apis"
 // The table id is stable, so default to it when the env var is unset
 // (avoids requiring an extra Vercel env var for this single-tenant app).
 const CANDIDATE_TABLE_ID = process.env.FEISHU_CANDIDATE_TABLE_ID || "tblV49gshqS0AWoc"
+// 今日To-do 表 (same Bitable base). Auto-filled by the daily cron.
+const TODO_TABLE_ID = process.env.FEISHU_TODO_TABLE_ID || "tblssZXP1mW0DRjl"
 
 interface FunnelNumbers {
   totalApplications: number
@@ -508,5 +511,69 @@ export async function pullCandidatesFromFeishu(internshipId: string): Promise<vo
     }
   } catch (e) {
     logger.error("Feishu candidate pull failed", { error: String(e) })
+  }
+}
+
+/**
+ * Overwrite today's auto-generated recruiting to-dos in the Feishu 今日To-do 表.
+ * Only rows this cron generates (分类=招聘, same 日期) are cleared then rewritten,
+ * so manually-added rows and other categories (e.g. 复盘) are left untouched.
+ * Non-critical: logs and swallows errors so it never breaks the caller.
+ */
+export async function syncTodosToFeishu(dateMs: number, items: TodoItem[]): Promise<void> {
+  try {
+    const token = await getToken()
+    if (!token) return
+    const appToken = process.env.FEISHU_BITABLE_APP_TOKEN!
+    const tableId = TODO_TABLE_ID
+
+    // 1. Collect this date's stale auto rows (分类=招聘) and delete them.
+    const staleIds: string[] = []
+    let pageToken = ""
+    for (let guard = 0; guard < 20; guard++) {
+      const url = `${BASE}/bitable/v1/apps/${appToken}/tables/${tableId}/records?page_size=200${pageToken ? `&page_token=${pageToken}` : ""}`
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      const data = (await res.json()) as {
+        code: number
+        data?: { items?: { record_id: string; fields: Record<string, unknown> }[]; page_token?: string; has_more?: boolean }
+      }
+      if (data.code !== 0) break
+      for (const it of data.data?.items ?? []) {
+        const dRaw = it.fields["日期"]
+        const d = typeof dRaw === "number" ? dRaw : Number(dRaw)
+        if (!isNaN(d) && beijingMidnightMs(new Date(d)) === dateMs && toText(it.fields["分类"]) === "招聘") {
+          staleIds.push(it.record_id)
+        }
+      }
+      if (!data.data?.has_more || !data.data?.page_token) break
+      pageToken = data.data.page_token
+    }
+    if (staleIds.length) {
+      await fetch(`${BASE}/bitable/v1/apps/${appToken}/tables/${tableId}/records/batch_delete`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ records: staleIds }),
+      })
+    }
+
+    // 2. Write the fresh to-dos for today.
+    if (!items.length) return
+    const records = items.map((t) => ({
+      fields: {
+        "任务": t.names.length ? `${t.label}（${t.names.length}人）` : t.label,
+        "优先级": t.priority === "high" ? "高" : "中",
+        "分类": "招聘",
+        "状态": "待办",
+        "日期": dateMs,
+        "备注": [t.names.join("、"), t.hint].filter(Boolean).join(" · "),
+      },
+    }))
+    await fetch(`${BASE}/bitable/v1/apps/${appToken}/tables/${tableId}/records/batch_create`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ records }),
+    })
+  } catch (e) {
+    logger.error("Feishu todos sync failed", { error: String(e) })
   }
 }

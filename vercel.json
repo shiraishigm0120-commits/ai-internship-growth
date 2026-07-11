@@ -2,6 +2,9 @@
   "regions": ["hkg1"],
   "installCommand": "npm install --legacy-peer-deps",
   "buildCommand": "prisma generate && next build",
+  "crons": [
+    { "path": "/api/cron/push-todos", "schedule": "0 0 * * *" }
+  ],
   "headers": [
     {
       "source": "/(.*)",
