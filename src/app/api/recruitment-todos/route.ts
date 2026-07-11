@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextResponse, after } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { handleApiError } from "@/lib/api-utils"
@@ -28,7 +28,7 @@ export async function GET() {
     const now = Date.now()
     if ((lastPull.get(internship.id) ?? 0) < now - PULL_TTL_MS) {
       lastPull.set(internship.id, now)
-      await pullCandidatesFromFeishu(internship.id)
+      after(() => pullCandidatesFromFeishu(internship.id))
     }
 
     const data = await getTodayTodos(internship.id)

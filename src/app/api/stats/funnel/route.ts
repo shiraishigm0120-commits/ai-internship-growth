@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, after } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { handleApiError, badRequest } from "@/lib/api-utils"
@@ -148,7 +148,7 @@ export async function GET() {
     const now = Date.now()
     if ((lastPull.get(internship.id) ?? 0) < now - PULL_TTL_MS) {
       lastPull.set(internship.id, now)
-      await pullFunnelFromFeishu(internship.id)
+      after(() => pullFunnelFromFeishu(internship.id))
     }
 
     const data = await prisma.recruitmentFunnel.findMany({

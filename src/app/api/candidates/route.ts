@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextResponse, after } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { handleApiError } from "@/lib/api-utils"
@@ -28,11 +28,13 @@ export async function GET() {
       return NextResponse.json({ data: { candidates: [], stages: BOARD_STAGES } })
     }
 
-    // Feishu 候选人看板 is source of truth: pull latest before reading (throttled).
+    // Feishu 候选人看板 is source of truth. Read the DB now (fast, always has
+    // data) and refresh from Feishu AFTER the response — the pull's cross-region
+    // writes never block or time out the read; fresh data lands on the next load.
     const now = Date.now()
     if ((lastPull.get(internship.id) ?? 0) < now - PULL_TTL_MS) {
       lastPull.set(internship.id, now)
-      await pullCandidatesFromFeishu(internship.id)
+      after(() => pullCandidatesFromFeishu(internship.id))
     }
 
     const candidates = await prisma.candidate.findMany({
