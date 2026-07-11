@@ -8,6 +8,10 @@ export interface RecruitmentStats {
   businessPassed: number
   interviewInvited: number
   interviewed: number
+  // Interviews actually attended — summed from the daily funnel (面试到场), which
+  // reflects real attendance. `interviewed` (candidate 面试日期 count) also counts
+  // scheduled/future interviews, so it must NOT be used for achievement stats.
+  interviewAttended: number
   offered: number
   accepted: number
   onboarded: number
@@ -27,7 +31,7 @@ export async function getRecruitmentStats(internshipId: string): Promise<Recruit
   const [funnels, candidates] = await Promise.all([
     prisma.recruitmentFunnel.findMany({
       where: { internshipId },
-      select: { totalApplications: true },
+      select: { totalApplications: true, interviewAttendees: true },
     }),
     prisma.candidate.findMany({
       where: { internshipId },
@@ -45,6 +49,7 @@ export async function getRecruitmentStats(internshipId: string): Promise<Recruit
   ])
 
   const totalApplications = funnels.reduce((s, f) => s + f.totalApplications, 0)
+  const interviewAttended = funnels.reduce((s, f) => s + f.interviewAttendees, 0)
   const count = (pred: (c: (typeof candidates)[number]) => boolean) => candidates.filter(pred).length
 
   return {
@@ -53,6 +58,7 @@ export async function getRecruitmentStats(internshipId: string): Promise<Recruit
     businessPassed: count((c) => c.businessPassDate != null),
     interviewInvited: count((c) => c.interviewInviteDate != null),
     interviewed: count((c) => c.interviewDate != null),
+    interviewAttended,
     offered: count((c) => c.offerDate != null),
     accepted: count((c) => c.offerAcceptDate != null),
     onboarded: count((c) => c.onboardDate != null),
@@ -71,7 +77,7 @@ export function recruitmentCareerCapital(
   const entries: { category: string; count: number; unit: string }[] = [
     { category: "筛选简历", count: s.totalApplications, unit: "份" },
     { category: "推荐候选人", count: s.recommended, unit: "人" },
-    { category: "组织面试", count: s.interviewed, unit: "场" },
+    { category: "组织面试", count: s.interviewAttended, unit: "场" },
     { category: "发出Offer", count: s.offered, unit: "个" },
     { category: "成功入职", count: s.onboarded, unit: "人" },
   ]

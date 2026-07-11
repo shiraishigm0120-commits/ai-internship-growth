@@ -41,7 +41,7 @@ export async function generateRecruitmentStar(
     `推荐候选人：${stats.recommended} 人`,
     `业务筛选通过：${stats.businessPassed} 人`,
     `邀约面试：${stats.interviewInvited} 人`,
-    `组织面试到场：${stats.interviewed} 场`,
+    `组织面试到场：${stats.interviewAttended} 场`,
     `发出 Offer：${stats.offered} 个`,
     `成功入职：${stats.onboarded} 人`,
     `覆盖岗位：${positions.map((p) => `${p.position}(${p.count}人)`).join("、") || "多个岗位"}`,
