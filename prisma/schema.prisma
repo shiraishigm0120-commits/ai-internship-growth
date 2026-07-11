@@ -439,6 +439,9 @@ model Candidate {
   offerAcceptDate    DateTime?
   onboardDate        DateTime?
 
+  // 约定的面试时间（含具体时刻），邀约后填写以便记住何时面试
+  interviewScheduledAt DateTime?
+
   statusNote   String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

@@ -328,6 +328,7 @@ export interface CandidateFields {
   offerDate?: Date | null
   offerAcceptDate?: Date | null
   onboardDate?: Date | null
+  interviewScheduledAt?: Date | null
   statusNote?: string | null
 }
 
@@ -336,6 +337,13 @@ function toDate(v: unknown): Date | null {
   const ms = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN
   if (!ms || isNaN(ms)) return null
   return new Date(beijingMidnightMs(new Date(ms)))
+}
+
+// Like toDate but preserves the exact time (for scheduled datetimes).
+function toDateTimeRaw(v: unknown): Date | null {
+  const ms = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN
+  if (!ms || isNaN(ms)) return null
+  return new Date(ms)
 }
 
 function dateToMs(d: Date | null | undefined): number | undefined {
@@ -363,6 +371,8 @@ function buildCandidateFields(c: CandidateFields): Record<string, unknown> {
   }
   if (c.position !== undefined) fields["岗位"] = normalizePosition(c.position)
   if (c.statusNote !== undefined) fields["状态备注"] = c.statusNote ?? ""
+  // 约面时间 keeps the exact time (not day-normalized).
+  if (c.interviewScheduledAt) fields["约面时间"] = new Date(c.interviewScheduledAt).getTime()
   const dateMap: [string, Date | null | undefined][] = [
     ["推荐日期", c.recommendedDate],
     ["业务筛选日期", c.businessPassDate],
@@ -479,6 +489,7 @@ export async function pullCandidatesFromFeishu(internshipId: string): Promise<vo
         offerDate: toDate(f["Offer日期"]),
         offerAcceptDate: toDate(f["接受日期"]),
         onboardDate: toDate(f["入职日期"]),
+        interviewScheduledAt: toDateTimeRaw(f["约面时间"]),
         statusNote: toText(f["状态备注"]) || null,
       }
 

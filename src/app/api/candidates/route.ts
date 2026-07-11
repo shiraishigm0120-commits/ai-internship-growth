@@ -43,6 +43,14 @@ export async function GET() {
     function fmt(d: Date | null): string | null {
       return d ? d.toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" }) : null
     }
+    // Scheduled interview keeps the time-of-day.
+    function fmtDateTime(d: Date | null): string | null {
+      if (!d) return null
+      return d.toLocaleString("zh-CN", {
+        timeZone: "Asia/Shanghai",
+        month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
+      })
+    }
 
     const data = candidates.map((c) => ({
       id: c.id,
@@ -57,6 +65,7 @@ export async function GET() {
       offerDate: fmt(c.offerDate),
       offerAcceptDate: fmt(c.offerAcceptDate),
       onboardDate: fmt(c.onboardDate),
+      interviewScheduledAt: fmtDateTime(c.interviewScheduledAt),
     }))
 
     return NextResponse.json({ data: { candidates: data, stages: BOARD_STAGES } })
