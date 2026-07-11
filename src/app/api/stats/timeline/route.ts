@@ -82,17 +82,22 @@ export async function GET() {
 
     // Overlay authoritative recruitment counts onto the AI-derived career
     // capital (recruitment numbers computed from the DB are exact and win).
-    const activeInternship = await prisma.internship.findFirst({
-      where: { userId: session.user.id, isActive: true },
-      select: { id: true },
-    })
-    if (activeInternship) {
-      const recCapital = recruitmentCareerCapital(await getRecruitmentStats(activeInternship.id))
-      if (recCapital.length > 0) {
-        const byCategory = new Map(careerCapital.map((c) => [c.category, c]))
-        for (const rc of recCapital) byCategory.set(rc.category, rc)
-        careerCapital = Array.from(byCategory.values())
+    // Non-fatal: never let the recruitment overlay break the whole timeline.
+    try {
+      const activeInternship = await prisma.internship.findFirst({
+        where: { userId: session.user.id, isActive: true },
+        select: { id: true },
+      })
+      if (activeInternship) {
+        const recCapital = recruitmentCareerCapital(await getRecruitmentStats(activeInternship.id))
+        if (recCapital.length > 0) {
+          const byCategory = new Map(careerCapital.map((c) => [c.category, c]))
+          for (const rc of recCapital) byCategory.set(rc.category, rc)
+          careerCapital = Array.from(byCategory.values())
+        }
       }
+    } catch (e) {
+      console.error("Recruitment career-capital overlay failed (non-fatal):", e)
     }
 
     // Current skills from Skill table (queryable source of truth)

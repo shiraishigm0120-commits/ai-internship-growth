@@ -151,6 +151,9 @@ export default function TimelinePage() {
     try {
       const res = await fetch("/api/stats/timeline")
       const json = await res.json()
+      if (!res.ok || !json.data) {
+        throw new Error(json.error ?? "获取成长数据失败")
+      }
       setData(json.data)
     } catch (err) {
       setError(err instanceof Error ? err.message : "获取成长数据失败")
