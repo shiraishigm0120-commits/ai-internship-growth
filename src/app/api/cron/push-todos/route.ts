@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { pullCandidatesFromFeishu, syncTodosToFeishu, beijingMidnightMs } from "@/lib/feishu"
 import { getTodayTodos } from "@/lib/recruitment-todos"
+import { beijingYmd, isWorkday } from "@/lib/workdays"
 import { handleApiError } from "@/lib/api-utils"
 
 // Daily cron (see vercel.json). Pulls the candidate board fresh, derives today's
@@ -12,6 +13,11 @@ export async function GET(req: Request) {
     const secret = process.env.CRON_SECRET
     if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // The intern doesn't work weekends — skip Sat/Sun so no to-dos are pushed.
+    if (!isWorkday(beijingYmd(new Date()))) {
+      return NextResponse.json({ data: { skipped: "weekend" } })
     }
 
     const internships = await prisma.internship.findMany({
