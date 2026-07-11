@@ -16,7 +16,6 @@ interface Candidate {
   offerDate: string | null
   offerAcceptDate: string | null
   onboardDate: string | null
-  interviewScheduledAt: string | null
 }
 
 // Canonical positions (aliases normalized into these).
@@ -152,10 +151,10 @@ export default function CandidateBoard() {
                     {stages
                       .map((stage) => {
                         let items = inPos.filter((c) => c.currentStage === stage)
-                        // 邀约面试：按约面时间排序，最近的在前，方便查看即将到来的面试
+                        // 邀约面试：按面试日期排序，最近的在前，方便查看即将到来的面试
                         if (stage === "邀约面试") {
                           items = [...items].sort((a, b) =>
-                            (a.interviewScheduledAt ?? "~").localeCompare(b.interviewScheduledAt ?? "~")
+                            (a.interviewDate ?? "~").localeCompare(b.interviewDate ?? "~")
                           )
                         }
                         return { stage, items }
@@ -182,17 +181,16 @@ export default function CandidateBoard() {
                                     </span>
                                   )}
                                 </div>
-                                {c.interviewScheduledAt ? (
-                                  <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-0.5 leading-tight font-medium">
-                                    🗓 面试 {c.interviewScheduledAt}
-                                  </p>
-                                ) : (
-                                  stage === "邀约面试" && (
-                                    <p className="text-[10px] text-red-500 mt-0.5 leading-tight">
-                                      ⚠️ 未约面试时间
+                                {stage === "邀约面试" &&
+                                  (c.interviewDate ? (
+                                    <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-0.5 leading-tight font-medium">
+                                      🗓 面试 {c.interviewDate?.slice(5)}
                                     </p>
-                                  )
-                                )}
+                                  ) : (
+                                    <p className="text-[10px] text-red-500 mt-0.5 leading-tight">
+                                      ⚠️ 未定面试日期
+                                    </p>
+                                  ))}
                                 {c.statusNote && (
                                   <p className="text-[10px] text-amber-600 dark:text-amber-500 mt-0.5 leading-tight">
                                     {c.statusNote}
