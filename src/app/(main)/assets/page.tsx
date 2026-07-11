@@ -67,6 +67,24 @@ export default function AssetsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const [genStarLoading, setGenStarLoading] = useState(false)
+
+  async function generateRecruitmentStar() {
+    setGenStarLoading(true)
+    try {
+      const res = await fetch("/api/star-cases/generate-recruitment", { method: "POST" })
+      const json = await res.json()
+      if (!res.ok) {
+        setError(json.error ?? "生成失败")
+      } else {
+        await fetchAll()
+      }
+    } catch {
+      setError("生成失败，请稍后重试")
+    } finally {
+      setGenStarLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -274,6 +292,11 @@ export default function AssetsPage() {
       {/* STAR Cases */}
       {activeTab === "star" && (
         <div className="space-y-3">
+          <div className="flex justify-end">
+            <Button size="sm" onClick={generateRecruitmentStar} disabled={genStarLoading}>
+              {genStarLoading ? "生成中…" : "✨ 从招聘数据生成 STAR"}
+            </Button>
+          </div>
           {filteredStarCases.length === 0 ? (
             <div className="rounded-xl border bg-card p-8 text-center">
               <Star className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />

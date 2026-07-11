@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { handleApiError } from "@/lib/api-utils"
+import { getRecruitmentStats, recruitmentCareerCapital } from "@/lib/recruitment-stats"
 
 export async function GET() {
   try {
@@ -77,6 +78,21 @@ export async function GET() {
           }))
         }
       } catch { /* corrupt data */ }
+    }
+
+    // Overlay authoritative recruitment counts onto the AI-derived career
+    // capital (recruitment numbers computed from the DB are exact and win).
+    const activeInternship = await prisma.internship.findFirst({
+      where: { userId: session.user.id, isActive: true },
+      select: { id: true },
+    })
+    if (activeInternship) {
+      const recCapital = recruitmentCareerCapital(await getRecruitmentStats(activeInternship.id))
+      if (recCapital.length > 0) {
+        const byCategory = new Map(careerCapital.map((c) => [c.category, c]))
+        for (const rc of recCapital) byCategory.set(rc.category, rc)
+        careerCapital = Array.from(byCategory.values())
+      }
     }
 
     // Current skills from Skill table (queryable source of truth)
