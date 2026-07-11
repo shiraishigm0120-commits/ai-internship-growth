@@ -18,6 +18,7 @@ import {
   RefreshCw,
 } from "lucide-react"
 import { DailyRecordChat } from "@/components/daily-record/chat-interface"
+import TodayTodos from "@/components/today/today-todos"
 import { useActiveInternship } from "@/hooks/use-active-internship"
 import { hasDraft } from "@/hooks/use-chat-stream"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -184,6 +185,8 @@ export default function TodayPage() {
           </p>
         </div>
 
+        <TodayTodos />
+
         {/* HEADLINE: The ONE thing */}
         {discovery?.headline && (
           <motion.div
@@ -317,6 +320,8 @@ export default function TodayPage() {
           {internship.companyName} · {internship.position} · 第 {data?.currentDay ?? 0} 天
         </p>
       </div>
+
+      <TodayTodos />
 
       {/* If we have growth insights from past data, show them FIRST */}
       {hasInsights ? (
