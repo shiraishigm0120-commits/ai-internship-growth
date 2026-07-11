@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { handleApiError } from "@/lib/api-utils"
 import { getRecruitmentStats, recruitmentCareerCapital } from "@/lib/recruitment-stats"
+import { workdaySet, currentStreak as computeStreak } from "@/lib/workdays"
 
 export async function GET() {
   try {
@@ -18,7 +19,7 @@ export async function GET() {
     const internshipIds = internships.map((i) => i.id)
 
     // Batch all independent queries
-    const [milestones, growthMemories, skills, records] = await Promise.all([
+    const [milestones, growthMemories, skills, records, funnels] = await Promise.all([
       prisma.milestone.findMany({
         where: { userId: session.user.id },
         orderBy: { date: "desc" },
@@ -39,6 +40,10 @@ export async function GET() {
         where: { internshipId: { in: internshipIds } },
         orderBy: { date: "asc" },
         select: { date: true, wordCount: true },
+      }),
+      prisma.recruitmentFunnel.findMany({
+        where: { internshipId: { in: internshipIds } },
+        select: { date: true },
       }),
     ])
 
@@ -114,26 +119,14 @@ export async function GET() {
       wordCount: r.wordCount,
     }))
 
-    // Calculate streaks
-    let currentStreak = 0
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const sortedDates = records
-      .map((r) => {
-        const d = new Date(r.date)
-        d.setHours(0, 0, 0, 0)
-        return d.getTime()
-      })
-      .sort((a, b) => b - a)
-
-    for (let i = 0; i < sortedDates.length; i++) {
-      const expected = today.getTime() - i * 86400000
-      if (sortedDates[i] === expected) {
-        currentStreak++
-      } else {
-        break
-      }
-    }
+    // 记录天数 & 连续天数：按北京时间归日，只算工作日，复盘/招聘漏斗任一有数据
+    // 即算「这天有记录」；连续天数跨周末不中断。
+    const daysSet = workdaySet(
+      records.map((r) => r.date),
+      funnels.map((f) => f.date),
+    )
+    const totalDays = daysSet.size
+    const currentStreak = computeStreak(daysSet)
 
     return NextResponse.json({
       data: {
@@ -151,7 +144,7 @@ export async function GET() {
         careerCapital,
         activityData,
         currentStreak,
-        totalDays: records.length,
+        totalDays,
         totalMilestones: milestones.length,
       },
     })

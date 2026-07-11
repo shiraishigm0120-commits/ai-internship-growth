@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { handleApiError } from "@/lib/api-utils"
+import { workdaySet, currentStreak as computeStreak, workdaysElapsed } from "@/lib/workdays"
 
 export async function GET(req: Request) {
   try {
@@ -59,39 +60,25 @@ export async function GET(req: Request) {
       },
     })
 
-    // Total days
-    const totalRecords = await prisma.dailyRecord.count({
-      where: { internshipId: internship.id },
-    })
-
-    // Current internship day
-    const startDate = new Date(internship.startDate)
-    const currentDay = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
-
-    // Streak calculation
-    let streakDays = 0
-    const recentRecords = await prisma.dailyRecord.findMany({
-      where: { internshipId: internship.id },
-      orderBy: { date: "desc" },
-      take: 30,
-      select: { date: true },
-    })
-
-    let checkDate = new Date(today)
-    for (const record of recentRecords) {
-      const recordDate = new Date(record.date)
-      recordDate.setHours(0, 0, 0, 0)
-      const diff = Math.floor((checkDate.getTime() - recordDate.getTime()) / (1000 * 60 * 60 * 24))
-      if (diff === 0) {
-        streakDays++
-        checkDate.setDate(checkDate.getDate() - 1)
-      } else if (diff === 1) {
-        streakDays++
-        checkDate = recordDate
-      } else {
-        break
-      }
-    }
+    // 记录天数 / 连续天数 / 实习第N天：统一走 lib/workdays（北京时间 + 工作日 +
+    // 跨周末不中断；复盘或招聘漏斗任一有数据即算「这天有记录」）。
+    const [recordDates, funnelDates] = await Promise.all([
+      prisma.dailyRecord.findMany({
+        where: { internshipId: internship.id },
+        select: { date: true },
+      }),
+      prisma.recruitmentFunnel.findMany({
+        where: { internshipId: internship.id },
+        select: { date: true },
+      }),
+    ])
+    const daysSet = workdaySet(
+      recordDates.map((r) => r.date),
+      funnelDates.map((f) => f.date),
+    )
+    const totalDays = daysSet.size
+    const streakDays = computeStreak(daysSet)
+    const currentDay = workdaysElapsed(internship.startDate)
 
     // Total counts
     const totalTasks = await prisma.workItem.count({
@@ -180,7 +167,7 @@ export async function GET(req: Request) {
 
     // AI Insight
     let aiInsight = ""
-    if (totalRecords === 0) {
+    if (totalDays === 0) {
       aiInsight = "欢迎使用 AI 实习成长系统！点击「每日记录」开始你的第一次 AI 访谈吧。"
     } else if (streakDays >= 7) {
       aiInsight = `你已经连续记录了 ${streakDays} 天，非常棒！持续的记录能帮助你更好地沉淀成长。`
@@ -194,7 +181,7 @@ export async function GET(req: Request) {
       data: {
         todayRecorded: !!todayRecord,
         streakDays,
-        totalDays: totalRecords,
+        totalDays,
         currentDay,
         weeklyTasks,
         totalTasks,

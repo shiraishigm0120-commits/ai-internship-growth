@@ -5,6 +5,7 @@ import { getOpenAI } from "@/lib/ai-provider"
 import { decrypt } from "@/lib/crypto"
 import { discoverFromData, deepDiscovery } from "@/lib/ai/discovery"
 import { handleApiError } from "@/lib/api-utils"
+import { workdaySet, currentStreak as computeStreak, workdaysElapsed } from "@/lib/workdays"
 
 export async function GET() {
   try {
@@ -43,12 +44,10 @@ export async function GET() {
       })
     }
 
-    const startDate = new Date(internship.startDate)
-    const currentDay =
-      Math.floor((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    const currentDay = workdaysElapsed(internship.startDate)
 
     // Batch record queries
-    const [todayRecord, allRecords] = await Promise.all([
+    const [todayRecord, allRecords, funnels] = await Promise.all([
       prisma.dailyRecord.findUnique({
         where: { internshipId_date: { internshipId: internship.id, date: today } },
         include: { workItems: true, knowledgeItems: true, achievements: true },
@@ -58,21 +57,19 @@ export async function GET() {
         orderBy: { date: "desc" },
         select: { date: true },
       }),
+      prisma.recruitmentFunnel.findMany({
+        where: { internshipId: internship.id },
+        select: { date: true },
+      }),
     ])
 
-    // Calculate streak
-    let streak = 0
-    const todayTime = today.getTime()
-    for (let i = 0; i < allRecords.length; i++) {
-      const expected = todayTime - i * 86400000
-      const recordDate = new Date(allRecords[i].date)
-      recordDate.setHours(0, 0, 0, 0)
-      if (recordDate.getTime() === expected) {
-        streak++
-      } else {
-        break
-      }
-    }
+    // 连续记录天数：工作日 + 跨周末不断，复盘/漏斗任一有数据即算（见 lib/workdays）。
+    const streak = computeStreak(
+      workdaySet(
+        allRecords.map((r) => r.date),
+        funnels.map((f) => f.date),
+      ),
+    )
 
     // Run data discovery (no AI cost, always runs)
     const discovery = await discoverFromData(session.user.id)
