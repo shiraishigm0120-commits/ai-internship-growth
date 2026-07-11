@@ -8,10 +8,28 @@ export interface FunnelExtraction {
   totalApplications?: number
   passedScreening?: number
   passedBusinessReview?: number
+  interviewInvited?: number
   interviewAttendees?: number
   offersSent?: number
   offersAccepted?: number
   onboarded?: number
+}
+
+export interface FunnelNames {
+  screening?: string
+  invited?: string
+  interviewed?: string
+  offer?: string
+  inProcess?: string
+}
+
+// 复盘中提到的候选人及其今日推进到的阶段（用于自动更新候选人看板）
+export interface ExtractedCandidate {
+  name: string
+  position?: string
+  // 今日推进到的阶段：推荐简历/业务筛选/邀约面试/已面试/面试通过/Offer/接受/待入职/已入职/已淘汰
+  stageToday: string
+  note?: string
 }
 
 export interface ExtractedData {
@@ -49,6 +67,8 @@ export interface ExtractedData {
   skillChanges?: { name: string; from: number; to: number }[]
   reflection?: string
   funnel?: FunnelExtraction
+  funnelNames?: FunnelNames
+  candidates?: ExtractedCandidate[]
 }
 
 export interface DashboardData {

@@ -23,6 +23,7 @@ import { ShareButton } from "@/components/share/share-button"
 import { toast } from "sonner"
 import SkillTrendChart from "@/components/charts/skill-trend-chart"
 import FunnelChart from "@/components/charts/funnel-chart"
+import CandidateBoard from "@/components/charts/candidate-board"
 
 interface TimelineData {
   milestones: {
@@ -81,6 +82,7 @@ interface FunnelRow {
   totalApplications: number
   passedScreening: number
   passedBusinessReview: number
+  interviewInvited: number
   interviewAttendees: number
   offersSent: number
   offersAccepted: number
@@ -91,6 +93,7 @@ interface FunnelTotal {
   totalApplications: number
   passedScreening: number
   passedBusinessReview: number
+  interviewInvited: number
   interviewAttendees: number
   offersSent: number
   offersAccepted: number
@@ -702,6 +705,9 @@ export default function TimelinePage() {
               ) : (
                 <div className="h-48 bg-muted rounded-xl animate-pulse" />
               )}
+              <div className="mt-4">
+                <CandidateBoard />
+              </div>
             </div>
           )}
 

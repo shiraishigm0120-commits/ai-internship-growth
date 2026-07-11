@@ -105,6 +105,10 @@ export async function POST(req: Request) {
               where: { status: "in_progress" },
               select: { title: true, status: true },
             },
+            recruitmentFunnels: {
+              orderBy: { date: "desc" },
+              take: 7,
+            },
           },
         })
 
@@ -115,6 +119,20 @@ export async function POST(req: Request) {
           )
 
           const growthMemory = await getLatestGrowthMemory(session.user.id)
+
+          // Build a lightweight funnel snapshot for the coach to reference
+          let funnelSnapshot = ""
+          const funnels = internship.recruitmentFunnels ?? []
+          if (funnels.length > 0) {
+            const recent = funnels.slice(0, 1)[0]
+            const ymd = recent.date.toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" })
+            funnelSnapshot = `招聘漏斗（截至 ${ymd}）：\n最近一天：投递${recent.totalApplications}→初筛${recent.passedScreening}→业务${recent.passedBusinessReview}→邀约${recent.interviewInvited}→面试${recent.interviewAttendees}→Offer${recent.offersSent}→接受${recent.offersAccepted}→入职${recent.onboarded}`
+            if (funnels.length >= 3) {
+              const weekApps = funnels.slice(0, 3).reduce((s, r) => s + r.totalApplications, 0)
+              const weekHires = funnels.slice(0, 3).reduce((s, r) => s + r.onboarded, 0)
+              funnelSnapshot += `\n近3天累计：投递${weekApps}，入职${weekHires}`
+            }
+          }
 
           contextStr = buildInterviewContext({
             userName: session.user.name ?? undefined,
@@ -131,6 +149,7 @@ export async function POST(req: Request) {
               title: t.title,
               status: t.status,
             })),
+            funnelSnapshot: funnelSnapshot || undefined,
             growthMemory: growthMemory
               ? {
                   summary: growthMemory.summary,

@@ -108,6 +108,7 @@ model Internship {
   starCases          STARCase[]
   resumeMaterials    ResumeMaterial[]
   recruitmentFunnels RecruitmentFunnel[]
+  candidates         Candidate[]
 
   @@index([userId])
 }
@@ -396,13 +397,18 @@ model RecruitmentFunnel {
   passedScreening       Int      @default(0)
   // 第三层：业务筛选通过数
   passedBusinessReview  Int      @default(0)
-  // 第四层：面试到场数
+  // 第四层：邀约面试数
+  interviewInvited      Int      @default(0)
+  // 第五层：面试到场数
   interviewAttendees    Int      @default(0)
-  // 第五层：Offer发出数
+  // 第六层：Offer发出数
   offersSent            Int      @default(0)
-  // 第六层：Offer接受 + 入职
+  // 第七层：Offer接受 + 入职
   offersAccepted        Int      @default(0)
   onboarded             Int      @default(0)
+
+  // JSON: per-stage candidate names
+  stageDetail           String?
 
   note                  String?
   createdAt             DateTime @default(now())
@@ -411,6 +417,35 @@ model RecruitmentFunnel {
   internship Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
 
   @@unique([internshipId, date])
+  @@index([internshipId])
+}
+
+// 候选人看板：每行一个候选人，跟随其走完招聘全程。
+// 数据源为飞书「候选人看板」表；每日漏斗数量由各阶段日期派生。
+model Candidate {
+  id           String    @id @default(cuid())
+  internshipId String
+  name         String
+  position     String?
+  // 当前阶段：推荐简历/业务筛选/邀约面试/已面试/面试通过/Offer/待入职/已入职/已淘汰
+  currentStage String    @default("推荐简历")
+
+  // 各阶段进入日期（空=尚未进入该阶段），每日数量按这些日期数人头派生
+  recommendedDate    DateTime?
+  businessPassDate   DateTime?
+  interviewInviteDate DateTime?
+  interviewDate      DateTime?
+  offerDate          DateTime?
+  offerAcceptDate    DateTime?
+  onboardDate        DateTime?
+
+  statusNote   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  internship Internship @relation(fields: [internshipId], references: [id], onDelete: Cascade)
+
+  @@unique([internshipId, name])
   @@index([internshipId])
 }
 

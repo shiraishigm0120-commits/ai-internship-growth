@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { handleApiError, badRequest } from "@/lib/api-utils"
-import { syncFunnelToFeishu } from "@/lib/feishu"
+import { pullCandidatesFromFeishu, beijingMidnightMs } from "@/lib/feishu"
+
+// Throttle Feishu pulls: at most one per internship per TTL window.
+const lastPull = new Map<string, number>()
+const PULL_TTL_MS = 30_000
 
 export const STAGES = [
   { key: "totalApplications", label: "简历投递量", shortLabel: "投递" },
-  { key: "passedScreening", label: "初筛通过", shortLabel: "初筛" },
+  { key: "passedScreening", label: "推荐简历", shortLabel: "推荐" },
   { key: "passedBusinessReview", label: "业务筛选通过", shortLabel: "业务筛选" },
+  { key: "interviewInvited", label: "邀约面试", shortLabel: "邀约" },
   { key: "interviewAttendees", label: "面试到场", shortLabel: "面试" },
   { key: "offersSent", label: "Offer发出", shortLabel: "Offer" },
   { key: "offersAccepted", label: "Offer接受", shortLabel: "接受" },
@@ -20,16 +25,21 @@ type StageKey = (typeof STAGES)[number]["key"]
 const HEALTH: { from: StageKey; to: StageKey; label: string; low: number; high: number; lowLabel: string; highLabel: string }[] = [
   {
     from: "totalApplications", to: "passedScreening",
-    label: "初筛通过率", low: 20, high: 35,
+    label: "推荐率", low: 20, high: 35,
     lowLabel: "JD要求过高或渠道不匹配", highLabel: "筛选标准可能太宽松",
   },
   {
     from: "passedScreening", to: "passedBusinessReview",
     label: "业务筛选通过率", low: 30, high: 60,
-    lowLabel: "初筛标准需调整", highLabel: "业务筛选可更严格",
+    lowLabel: "推荐标准需调整", highLabel: "业务筛选可更严格",
   },
   {
-    from: "passedBusinessReview", to: "interviewAttendees",
+    from: "passedBusinessReview", to: "interviewInvited",
+    label: "邀约率", low: 60, high: 100,
+    lowLabel: "业务通过后邀约不足", highLabel: "邀约含往期候选人（正常）",
+  },
+  {
+    from: "interviewInvited", to: "interviewAttendees",
     label: "面试到场率", low: 70, high: 85,
     lowLabel: "邀约方式需改进", highLabel: "候选人意向强烈",
   },
@@ -55,6 +65,7 @@ interface FunnelRow {
   totalApplications: number
   passedScreening: number
   passedBusinessReview: number
+  interviewInvited: number
   interviewAttendees: number
   offersSent: number
   offersAccepted: number
@@ -66,6 +77,7 @@ interface AggregatedRow {
   totalApplications: number
   passedScreening: number
   passedBusinessReview: number
+  interviewInvited: number
   interviewAttendees: number
   offersSent: number
   offersAccepted: number
@@ -101,7 +113,7 @@ function aggregate(rows: FunnelRow[], view: ViewType): AggregatedRow[] {
         : getMonthLabel(new Date(r.date + "T00:00:00"))
 
     if (!map.has(key)) {
-      map.set(key, { totalApplications: 0, passedScreening: 0, passedBusinessReview: 0, interviewAttendees: 0, offersSent: 0, offersAccepted: 0, onboarded: 0 })
+      map.set(key, { totalApplications: 0, passedScreening: 0, passedBusinessReview: 0, interviewInvited: 0, interviewAttendees: 0, offersSent: 0, offersAccepted: 0, onboarded: 0 })
     }
     const acc = map.get(key)!
     for (const s of STAGES) {
@@ -130,21 +142,54 @@ export async function GET() {
       })
     }
 
-    const data = await prisma.recruitmentFunnel.findMany({
-      where: { internshipId: internship.id },
-      orderBy: { date: "asc" },
-    })
+    // Feishu 候选人看板 is source of truth: pull latest candidates into local DB
+    // before deriving (throttled to avoid hitting Feishu on every request).
+    const now = Date.now()
+    if ((lastPull.get(internship.id) ?? 0) < now - PULL_TTL_MS) {
+      lastPull.set(internship.id, now)
+      await pullCandidatesFromFeishu(internship.id)
+    }
 
-    const rows: FunnelRow[] = data.map((r) => ({
-      date: r.date.toISOString().slice(0, 10),
-      totalApplications: r.totalApplications,
-      passedScreening: r.passedScreening,
-      passedBusinessReview: r.passedBusinessReview,
-      interviewAttendees: r.interviewAttendees,
-      offersSent: r.offersSent,
-      offersAccepted: r.offersAccepted,
-      onboarded: r.onboarded,
-    }))
+    // Format the stored date in Beijing time so it is correct on any server TZ.
+    function fmtDate(d: Date): string {
+      return d.toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" })
+    }
+
+    // Daily counts (推荐→入职) are DERIVED by counting candidates' stage-entry
+    // dates. 简历投递量 has no names, so it stays a manual per-day input read
+    // from RecruitmentFunnel.
+    const candidates = await prisma.candidate.findMany({ where: { internshipId: internship.id } })
+    const funnelRows = await prisma.recruitmentFunnel.findMany({ where: { internshipId: internship.id } })
+
+    const emptyCounts = (): Record<StageKey, number> => ({
+      totalApplications: 0, passedScreening: 0, passedBusinessReview: 0, interviewInvited: 0,
+      interviewAttendees: 0, offersSent: 0, offersAccepted: 0, onboarded: 0,
+    })
+    const byDate = new Map<string, Record<StageKey, number>>()
+    const getDay = (ymd: string) => {
+      if (!byDate.has(ymd)) byDate.set(ymd, emptyCounts())
+      return byDate.get(ymd)!
+    }
+    const bump = (d: Date | null, key: StageKey) => {
+      if (!d) return
+      getDay(fmtDate(d))[key] += 1
+    }
+    for (const c of candidates) {
+      bump(c.recommendedDate, "passedScreening")
+      bump(c.businessPassDate, "passedBusinessReview")
+      bump(c.interviewInviteDate, "interviewInvited")
+      bump(c.interviewDate, "interviewAttendees")
+      bump(c.offerDate, "offersSent")
+      bump(c.offerAcceptDate, "offersAccepted")
+      bump(c.onboardDate, "onboarded")
+    }
+    for (const r of funnelRows) {
+      getDay(fmtDate(r.date)).totalApplications += r.totalApplications
+    }
+
+    const rows: FunnelRow[] = Array.from(byDate.entries())
+      .map(([date, v]) => ({ date, ...v }))
+      .sort((a, b) => a.date.localeCompare(b.date))
 
     const daily = aggregate(rows, "daily")
     const weekly = aggregate(rows, "weekly")
@@ -155,6 +200,7 @@ export async function GET() {
           totalApplications: rows.reduce((s, r) => s + r.totalApplications, 0),
           passedScreening: rows.reduce((s, r) => s + r.passedScreening, 0),
           passedBusinessReview: rows.reduce((s, r) => s + r.passedBusinessReview, 0),
+          interviewInvited: rows.reduce((s, r) => s + r.interviewInvited, 0),
           interviewAttendees: rows.reduce((s, r) => s + r.interviewAttendees, 0),
           offersSent: rows.reduce((s, r) => s + r.offersSent, 0),
           offersAccepted: rows.reduce((s, r) => s + r.offersAccepted, 0),
@@ -196,13 +242,13 @@ export async function POST(req: NextRequest) {
     const { date } = body
     if (!date) return badRequest("日期不能为空")
 
-    const dataDate = new Date(date)
-    dataDate.setHours(0, 0, 0, 0)
+    // Normalize to Beijing midnight so the same calendar day maps to one row
+    // regardless of server timezone.
+    const dataDate = new Date(beijingMidnightMs(new Date(date)))
 
-    const numericFields: StageKey[] = [
-      "totalApplications", "passedScreening", "passedBusinessReview",
-      "interviewAttendees", "offersSent", "offersAccepted", "onboarded",
-    ]
+    // Only 简历投递量 is a manual per-day input; the rest of the funnel is
+    // derived from the candidate board. Accept totalApplications + note here.
+    const totalApplications = typeof body.totalApplications === "number" ? body.totalApplications : 0
 
     const existing = await prisma.recruitmentFunnel.findUnique({
       where: { internshipId_date: { internshipId: internship.id, date: dataDate } },
@@ -210,34 +256,23 @@ export async function POST(req: NextRequest) {
 
     let result
     if (existing) {
-      const updateData: Record<string, unknown> = {}
-      for (const f of numericFields) {
-        if (typeof body[f] === "number") updateData[f] = body[f]
-      }
-      if (body.note !== undefined) updateData.note = body.note
-      result = await prisma.recruitmentFunnel.update({ where: { id: existing.id }, data: updateData })
+      result = await prisma.recruitmentFunnel.update({
+        where: { id: existing.id },
+        data: {
+          totalApplications,
+          ...(body.note !== undefined ? { note: body.note } : {}),
+        },
+      })
     } else {
       result = await prisma.recruitmentFunnel.create({
         data: {
           internshipId: internship.id,
           date: dataDate,
-          ...Object.fromEntries(numericFields.map((f) => [f, typeof body[f] === "number" ? body[f] : 0])),
+          totalApplications,
           note: body.note ?? null,
-        } as never,
+        },
       })
     }
-
-    // Sync to Feishu (non-critical)
-    await syncFunnelToFeishu(dataDate, {
-      totalApplications: (result.totalApplications as number) ?? 0,
-      passedScreening: (result.passedScreening as number) ?? 0,
-      passedBusinessReview: (result.passedBusinessReview as number) ?? 0,
-      interviewAttendees: (result.interviewAttendees as number) ?? 0,
-      offersSent: (result.offersSent as number) ?? 0,
-      offersAccepted: (result.offersAccepted as number) ?? 0,
-      onboarded: (result.onboarded as number) ?? 0,
-      note: (result.note as string) ?? undefined,
-    })
 
     return NextResponse.json({ data: result }, { status: 201 })
   } catch (error) {

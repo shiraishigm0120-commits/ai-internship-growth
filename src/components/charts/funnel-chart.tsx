@@ -14,6 +14,7 @@ interface FunnelRow {
   totalApplications: number
   passedScreening: number
   passedBusinessReview: number
+  interviewInvited: number
   interviewAttendees: number
   offersSent: number
   offersAccepted: number
@@ -24,6 +25,7 @@ interface FunnelTotal {
   totalApplications: number
   passedScreening: number
   passedBusinessReview: number
+  interviewInvited: number
   interviewAttendees: number
   offersSent: number
   offersAccepted: number
@@ -61,7 +63,8 @@ const COLORS = [
   "#3b82f6", // blue - 投递
   "#6366f1", // indigo - 初筛
   "#8b5cf6", // violet - 业务筛选
-  "#f59e0b", // amber - 面试
+  "#ec4899", // pink - 邀约面试
+  "#f59e0b", // amber - 面试到场
   "#ef4444", // red - Offer
   "#06b6d4", // cyan - 接受
   "#22c55e", // green - 入职
@@ -87,8 +90,8 @@ function healthColor(status: "good" | "warn" | "bad"): string {
 
 // ── SVG Funnel ──
 function FunnelSVG({ total, health }: { total: FunnelTotal; health: HealthDef[] }) {
-  const keys = ["totalApplications", "passedScreening", "passedBusinessReview", "interviewAttendees", "offersSent", "offersAccepted", "onboarded"]
-  const labels = ["投递量", "初筛通过", "业务筛选通过", "面试到场", "Offer发出", "Offer接受", "入职"]
+  const keys = ["totalApplications", "passedScreening", "passedBusinessReview", "interviewInvited", "interviewAttendees", "offersSent", "offersAccepted", "onboarded"]
+  const labels = ["投递量", "初筛通过", "业务筛选通过", "邀约面试", "面试到场", "Offer发出", "Offer接受", "入职"]
   const values = keys.map((k) => total[k as keyof FunnelTotal] || 0)
   const maxVal = Math.max(...values, 1)
   const stages = labels.map((label, i) => ({
@@ -175,6 +178,7 @@ function TimeSeriesChart({ data, stages }: { data: FunnelRow[]; stages: StageDef
     投递量: row.totalApplications,
     初筛通过: row.passedScreening,
     业务筛选通过: row.passedBusinessReview,
+    邀约面试: row.interviewInvited,
     面试到场: row.interviewAttendees,
     Offer发出: row.offersSent,
     Offer接受: row.offersAccepted,
@@ -192,10 +196,11 @@ function TimeSeriesChart({ data, stages }: { data: FunnelRow[]; stages: StageDef
         <Bar dataKey="投递量" fill={COLORS[0]} radius={[2, 2, 0, 0]} />
         <Bar dataKey="初筛通过" fill={COLORS[1]} radius={[2, 2, 0, 0]} />
         <Bar dataKey="业务筛选通过" fill={COLORS[2]} radius={[2, 2, 0, 0]} />
-        <Bar dataKey="面试到场" fill={COLORS[3]} radius={[2, 2, 0, 0]} />
-        <Bar dataKey="Offer发出" fill={COLORS[4]} radius={[2, 2, 0, 0]} />
-        <Bar dataKey="Offer接受" fill={COLORS[5]} radius={[2, 2, 0, 0]} />
-        <Bar dataKey="入职" fill={COLORS[6]} radius={[2, 2, 0, 0]} />
+        <Bar dataKey="邀约面试" fill={COLORS[3]} radius={[2, 2, 0, 0]} />
+        <Bar dataKey="面试到场" fill={COLORS[4]} radius={[2, 2, 0, 0]} />
+        <Bar dataKey="Offer发出" fill={COLORS[5]} radius={[2, 2, 0, 0]} />
+        <Bar dataKey="Offer接受" fill={COLORS[6]} radius={[2, 2, 0, 0]} />
+        <Bar dataKey="入职" fill={COLORS[7]} radius={[2, 2, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   )
@@ -209,6 +214,7 @@ function FunnelForm({ defaultValues, onSaved, stages }: { defaultValues?: Funnel
     totalApplications: defaultValues?.totalApplications ?? 0,
     passedScreening: defaultValues?.passedScreening ?? 0,
     passedBusinessReview: defaultValues?.passedBusinessReview ?? 0,
+    interviewInvited: defaultValues?.interviewInvited ?? 0,
     interviewAttendees: defaultValues?.interviewAttendees ?? 0,
     offersSent: defaultValues?.offersSent ?? 0,
     offersAccepted: defaultValues?.offersAccepted ?? 0,
@@ -246,7 +252,7 @@ function FunnelForm({ defaultValues, onSaved, stages }: { defaultValues?: Funnel
         onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
         className="bg-background border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20"
       />
-      <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+      <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
         {stages.map((s, i) => (
           <div key={s.key}>
             <label className="text-[10px] text-muted-foreground block mb-0.5 truncate" title={s.label}>
@@ -346,7 +352,7 @@ export default function FunnelChart({ data, onRefresh }: { data: FunnelData; onR
 
       {/* Summary cards */}
       {data.total && hasAnyData && (
-        <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5 text-center">
+        <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5 text-center">
           {data.stages.map((s, i) => {
             const val = data.total![s.key as keyof FunnelTotal] || 0
             return (
