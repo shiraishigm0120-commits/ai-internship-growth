@@ -75,7 +75,7 @@ export default function CandidateBoard() {
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-primary" />
           <h3 className="text-sm font-semibold">候选人看板</h3>
-          <span className="text-xs text-muted-foreground">共 {candidates.length} 人 · 每日漏斗数量由此派生</span>
+          <span className="text-xs text-muted-foreground">共 {candidates.length} 人 · 候选人追踪</span>
         </div>
         <button
           onClick={load}

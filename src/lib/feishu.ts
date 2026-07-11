@@ -268,23 +268,33 @@ export async function pullFunnelFromFeishu(internshipId: string): Promise<void> 
       keepDates.push(normDate)
 
       const stageDetail = JSON.stringify({
-        screening: toText(f["初筛名单"]),
-        invited: toText(f["邀约名单"]),
-        interviewed: toText(f["面试名单"]),
-        offer: toText(f["Offer名单"]),
-        inProcess: toText(f["流程中"]),
+        screening: toText(f["推荐简历名单"]),
+        business: toText(f["业务筛通过名单"]),
+        invited: toText(f["邀约面试名单"]),
+        interviewed: toText(f["面试通过"]),
+        inProcess: toText(f["流程中/待谈薪"]),
       })
       const note = toText(f["备注"]) || null
 
+      // Count non-empty name tokens; ignore bare numeric placeholders like "0".
+      const countNames = (v: unknown): number => {
+        const s = toText(v).trim()
+        if (!s) return 0
+        return s
+          .split(/[、,，;；]/)
+          .map((x) => x.trim())
+          .filter((x) => x && !/^\d+$/.test(x)).length
+      }
+
       const counts = {
         totalApplications: toNum(f["简历投递量"]),
-        passedScreening: toNum(f["初筛通过"]),
+        passedScreening: toNum(f["推荐简历"]),
         passedBusinessReview: toNum(f["业务筛选通过"]),
         interviewInvited: toNum(f["邀约面试"]),
-        interviewAttendees: toNum(f["面试到场"]),
-        offersSent: toNum(f["Offer发出"]),
-        offersAccepted: toNum(f["Offer接受"]),
-        onboarded: toNum(f["入职"]),
+        interviewAttendees: toNum(f["今日面试"]),
+        offersSent: countNames(f["Offer名单"]),
+        offersAccepted: 0,
+        onboarded: countNames(f["待入职"]),
       }
 
       await prisma.recruitmentFunnel.upsert({

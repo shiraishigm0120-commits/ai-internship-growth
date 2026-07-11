@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { handleApiError, badRequest } from "@/lib/api-utils"
-import { pullCandidatesFromFeishu, beijingMidnightMs } from "@/lib/feishu"
+import { pullFunnelFromFeishu, beijingMidnightMs } from "@/lib/feishu"
 
 // Throttle Feishu pulls: at most one per internship per TTL window.
 const lastPull = new Map<string, number>()
@@ -142,54 +142,36 @@ export async function GET() {
       })
     }
 
-    // Feishu 候选人看板 is source of truth: pull latest candidates into local DB
-    // before deriving (throttled to avoid hitting Feishu on every request).
+    // This week: the 每日招聘数据 table is the source (user edits numbers there).
+    // Pull it into local DB before reading (throttled). Next week we switch the
+    // source to the candidate board (derive counts from Candidate stage dates).
     const now = Date.now()
     if ((lastPull.get(internship.id) ?? 0) < now - PULL_TTL_MS) {
       lastPull.set(internship.id, now)
-      await pullCandidatesFromFeishu(internship.id)
+      await pullFunnelFromFeishu(internship.id)
     }
+
+    const data = await prisma.recruitmentFunnel.findMany({
+      where: { internshipId: internship.id },
+      orderBy: { date: "asc" },
+    })
 
     // Format the stored date in Beijing time so it is correct on any server TZ.
     function fmtDate(d: Date): string {
       return d.toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" })
     }
 
-    // Daily counts (推荐→入职) are DERIVED by counting candidates' stage-entry
-    // dates. 简历投递量 has no names, so it stays a manual per-day input read
-    // from RecruitmentFunnel.
-    const candidates = await prisma.candidate.findMany({ where: { internshipId: internship.id } })
-    const funnelRows = await prisma.recruitmentFunnel.findMany({ where: { internshipId: internship.id } })
-
-    const emptyCounts = (): Record<StageKey, number> => ({
-      totalApplications: 0, passedScreening: 0, passedBusinessReview: 0, interviewInvited: 0,
-      interviewAttendees: 0, offersSent: 0, offersAccepted: 0, onboarded: 0,
-    })
-    const byDate = new Map<string, Record<StageKey, number>>()
-    const getDay = (ymd: string) => {
-      if (!byDate.has(ymd)) byDate.set(ymd, emptyCounts())
-      return byDate.get(ymd)!
-    }
-    const bump = (d: Date | null, key: StageKey) => {
-      if (!d) return
-      getDay(fmtDate(d))[key] += 1
-    }
-    for (const c of candidates) {
-      bump(c.recommendedDate, "passedScreening")
-      bump(c.businessPassDate, "passedBusinessReview")
-      bump(c.interviewInviteDate, "interviewInvited")
-      bump(c.interviewDate, "interviewAttendees")
-      bump(c.offerDate, "offersSent")
-      bump(c.offerAcceptDate, "offersAccepted")
-      bump(c.onboardDate, "onboarded")
-    }
-    for (const r of funnelRows) {
-      getDay(fmtDate(r.date)).totalApplications += r.totalApplications
-    }
-
-    const rows: FunnelRow[] = Array.from(byDate.entries())
-      .map(([date, v]) => ({ date, ...v }))
-      .sort((a, b) => a.date.localeCompare(b.date))
+    const rows: FunnelRow[] = data.map((r) => ({
+      date: fmtDate(r.date),
+      totalApplications: r.totalApplications,
+      passedScreening: r.passedScreening,
+      passedBusinessReview: r.passedBusinessReview,
+      interviewInvited: r.interviewInvited,
+      interviewAttendees: r.interviewAttendees,
+      offersSent: r.offersSent,
+      offersAccepted: r.offersAccepted,
+      onboarded: r.onboarded,
+    }))
 
     const daily = aggregate(rows, "daily")
     const weekly = aggregate(rows, "weekly")
