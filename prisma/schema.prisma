@@ -442,6 +442,11 @@ model Candidate {
   // 约定的面试时间（含具体时刻），邀约后填写以便记住何时面试
   interviewScheduledAt DateTime?
 
+  // base地（城市：北京/重庆/西安/杭州）——日报按 岗位-base地 分组
+  baseLocation String?
+  // 子状态：区分同一「面试通过-流程中」阶段下的「面试通过」与「流程中/待谈薪」
+  subStatus    String?
+
   statusNote   String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

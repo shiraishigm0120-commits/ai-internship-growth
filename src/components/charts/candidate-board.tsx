@@ -7,6 +7,7 @@ interface Candidate {
   id: string
   name: string
   position: string | null
+  baseLocation: string | null
   currentStage: string
   statusNote: string | null
   recommendedDate: string | null
@@ -181,6 +182,11 @@ export default function CandidateBoard() {
                                     </span>
                                   )}
                                 </div>
+                                {c.baseLocation && (
+                                  <span className="inline-block text-[10px] text-muted-foreground bg-muted rounded px-1 mt-0.5">
+                                    {c.baseLocation}
+                                  </span>
+                                )}
                                 {stage === "邀约面试" &&
                                   (c.interviewDate ? (
                                     <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-0.5 leading-tight font-medium">

@@ -494,6 +494,8 @@ export async function pullCandidatesFromFeishu(internshipId: string): Promise<vo
         onboardDate: toDate(f["入职日期"]),
         interviewScheduledAt: toDateTimeRaw(f["约面时间"]),
         statusNote: toText(f["状态备注"]) || null,
+        baseLocation: toText(f["base地"]) || null,
+        subStatus: toText(f["子状态"]) || null,
       }
 
       await prisma.candidate.upsert({

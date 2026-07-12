@@ -24,6 +24,7 @@ import { toast } from "sonner"
 import SkillTrendChart from "@/components/charts/skill-trend-chart"
 import FunnelChart from "@/components/charts/funnel-chart"
 import CandidateBoard from "@/components/charts/candidate-board"
+import DailyReportButton from "@/components/reports/daily-report-button"
 
 interface TimelineData {
   milestones: {
@@ -699,9 +700,12 @@ export default function TimelinePage() {
           {/* Recruitment Funnel */}
           {!funnelLoading && (
             <div className="rounded-2xl border bg-card p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <TrendingUp className="w-5 h-5 text-blue-500" />
-                <h2 className="font-semibold">招聘漏斗</h2>
+              <div className="flex items-center justify-between gap-2 mb-4">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-blue-500" />
+                  <h2 className="font-semibold">招聘漏斗</h2>
+                </div>
+                <DailyReportButton />
               </div>
               {funnelData ? (
                 <FunnelChart data={funnelData} onRefresh={fetchFunnel} />

@@ -58,6 +58,7 @@ export async function GET() {
       id: c.id,
       name: c.name,
       position: c.position,
+      baseLocation: c.baseLocation,
       currentStage: c.currentStage,
       statusNote: c.statusNote,
       recommendedDate: fmt(c.recommendedDate),
