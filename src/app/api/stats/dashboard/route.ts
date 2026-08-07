@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { handleApiError } from "@/lib/api-utils"
 import { workdaySet, currentStreak as computeStreak, workdaysElapsed } from "@/lib/workdays"
+import { beijingMidnightMs } from "@/lib/feishu"
 
 export async function GET(req: Request) {
   try {
@@ -47,8 +48,7 @@ export async function GET(req: Request) {
       })
     }
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const today = new Date(beijingMidnightMs(new Date()))
 
     // Today's record
     const todayRecord = await prisma.dailyRecord.findUnique({

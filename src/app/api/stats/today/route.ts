@@ -6,6 +6,7 @@ import { decrypt } from "@/lib/crypto"
 import { discoverFromData, deepDiscovery } from "@/lib/ai/discovery"
 import { handleApiError } from "@/lib/api-utils"
 import { workdaySet, currentStreak as computeStreak, workdaysElapsed } from "@/lib/workdays"
+import { beijingMidnightMs } from "@/lib/feishu"
 
 export async function GET() {
   try {
@@ -14,8 +15,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const today = new Date(beijingMidnightMs(new Date()))
 
     // Batch all independent queries
     const [internship, growthMemory, settings] = await Promise.all([
