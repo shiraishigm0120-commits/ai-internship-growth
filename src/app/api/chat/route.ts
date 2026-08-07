@@ -193,6 +193,10 @@ export async function POST(req: Request) {
           max_tokens: 500,
         })
 
+        // Detect whether the user signalled they want to end the conversation.
+        const lastUserMsg = [...messages].reverse().find((m: { role: string; content: string }) => m.role === "user")
+        const userWantsEnd = lastUserMsg && /总结|结束|好了|可以了|差不多了|没了|就这样|先这样/.test(lastUserMsg.content)
+
         const encoder = new TextEncoder()
         const stream = new ReadableStream({
           async start(controller) {
@@ -206,6 +210,11 @@ export async function POST(req: Request) {
                     encoder.encode(`data: ${JSON.stringify({ content })}\n\n`)
                   )
                 }
+              }
+              // If the AI didn't emit [SUMMARY_READY] but the user wants to end,
+              // inject it so the client triggers extraction.
+              if (!fullContent.includes("[SUMMARY_READY]") && userWantsEnd) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: "[SUMMARY_READY]" })}\n\n`))
               }
               controller.enqueue(encoder.encode("data: [DONE]\n\n"))
               controller.close()
